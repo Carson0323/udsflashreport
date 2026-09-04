@@ -1,0 +1,49 @@
+schema_version: "1.1"
+default_confidence_policy: window_and_timing
+findings:
+  - id: ISO-TP-001
+    evaluator: missing_fc_after_ff
+    params: { timeout_key: isotp_fc_ms }
+    side_mapping: { tester_to_ecu: ecu, ecu_to_tester: tester }
+    evidence: { min_count: 2, required_types: [frame, absence_window] }
+    confidence_policy: window_and_timing
+  - id: ISO-TP-002
+    evaluator: cf_after_cts_missing
+    params: { timeout_key: isotp_cf_ms }
+    side_mapping: { tester_to_ecu: tester, ecu_to_tester: ecu }
+    evidence: { min_count: 2, required_types: [frame, absence_window] }
+    confidence_policy: window_and_timing
+  - id: ISO-TP-003
+    evaluator: sn_gap
+    params: {}
+    side_mapping: { tester_to_ecu: tester, ecu_to_tester: ecu }
+    evidence: { min_count: 2, allowed_types: [frame] }
+    confidence_policy: window_and_timing
+  - id: ISO-TP-004
+    evaluator: missing_fc_after_block
+    params: { timeout_key: isotp_fc_ms }
+    side_mapping: { tester_to_ecu: ecu, ecu_to_tester: tester }
+    evidence: { min_count: 2, required_types: [frame, absence_window] }
+    confidence_policy: window_and_timing
+  - id: ISO-TP-005
+    evaluator: stmin_violation
+    params: {}
+    side_mapping: { tester_to_ecu: tester, ecu_to_tester: ecu }
+    evidence: { min_count: 2, allowed_types: [frame] }
+    confidence: low
+    confidence_policy: window_and_timing
+  - id: UDS-001
+    evaluator: no_final_response
+    params: { p2_key: uds_p2_ms, p2_star_key: uds_p2_star_ms }
+    side_mapping: { server: ecu }
+    evidence: { min_count: 2, required_types: [frame, absence_window] }
+    confidence_policy: window_and_timing
+    supersede: true
+  - id: FLASH-001
+    evaluator: oversize_or_bsc_error
+    params: {}
+    side_mapping: { tester: tester }
+    evidence: { min_count: 2, allowed_types: [frame] }
+    confidence: high
+    confidence_policy: window_and_timing
+

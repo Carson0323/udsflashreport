@@ -1,0 +1,8 @@
+{
+  "schema_version": "m0",
+  "scenario": "tester_no_next_block",
+  "status": "implemented",
+  "findings": [],
+  "first_deviation": null,
+  "ambiguous": false
+}

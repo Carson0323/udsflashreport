@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://flashreport.local/spec/config.schema.json",
+  "title": "flashreport configuration",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "addressing", "isotp", "timeouts", "rules"],
+  "properties": {
+    "schema_version": {"const": "1.2"},
+    "addressing": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["auto_detect", "tester_sa", "enable_11bit_heuristic", "enable_29bit_normal_fixed", "manual_pairs"],
+      "properties": {
+        "auto_detect": {"type": "boolean"},
+        "tester_sa": {"type": "string", "pattern": "^[0-9A-Fa-f]{2}$"},
+        "enable_11bit_heuristic": {"type": "boolean"},
+        "enable_29bit_normal_fixed": {"type": "boolean"},
+        "manual_pairs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "request_id", "response_id", "channel", "is_extended_id"],
+            "properties": {
+              "name": {"type": "string"},
+              "request_id": {"type": "string", "pattern": "^[0-9A-Fa-f]{3,8}$"},
+              "response_id": {"type": "string", "pattern": "^[0-9A-Fa-f]{3,8}$"},
+              "channel": {"type": ["integer", "string", "null"]},
+              "is_extended_id": {"type": "boolean"}
+            }
+          }
+        }
+      }
+    },
+    "isotp": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["addressing_mode"],
+      "properties": {
+        "addressing_mode": {"enum": ["auto", "normal", "extended", "mixed"]}
+      }
+    },
+    "timeouts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["isotp_fc_ms", "isotp_cf_ms", "uds_p2_ms", "uds_p2_star_ms"],
+      "properties": {
+        "isotp_fc_ms": {"type": "integer", "minimum": 0},
+        "isotp_cf_ms": {"type": "integer", "minimum": 0},
+        "uds_p2_ms": {"type": "integer", "minimum": 0},
+        "uds_p2_star_ms": {"type": "integer", "minimum": 0}
+      }
+    },
+    "rules": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ISO-TP-001", "ISO-TP-002", "ISO-TP-003", "ISO-TP-004", "ISO-TP-005", "UDS-001", "FLASH-001"],
+      "properties": {
+        "ISO-TP-001": {"type": "boolean"},
+        "ISO-TP-002": {"type": "boolean"},
+        "ISO-TP-003": {"type": "boolean"},
+        "ISO-TP-004": {"type": "boolean"},
+        "ISO-TP-005": {"type": "boolean"},
+        "UDS-001": {"type": "boolean"},
+        "FLASH-001": {"type": "boolean"}
+      }
+    }
+  }
+}
+

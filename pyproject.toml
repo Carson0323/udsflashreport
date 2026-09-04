@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "udsflashreport"
+version = "0.1.0.dev0"
+description = "Deterministic UDS/ISO-TP flash trace fault attribution engine"
+readme = "README.md"
+requires-python = ">=3.11,<3.12"
+license = { file = "LICENSE" }
+dependencies = [
+    "PySide6>=6.6,<6.13",
+    "python-can>=4.5",
+    "can-isotp>=2.0",
+    "udsoncan>=1.22",
+    "jsonschema>=4.23",
+    "PyYAML>=6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-qt>=4.4",
+]
+
+[project.scripts]
+flashreport = "flashreport_core.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+qt_api = "pyside6"
+

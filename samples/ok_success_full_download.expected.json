@@ -1,0 +1,8 @@
+{
+  "schema_version": "m0",
+  "scenario": "success_full_download",
+  "status": "implemented",
+  "findings": [],
+  "first_deviation": null,
+  "ambiguous": false
+}

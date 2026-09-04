@@ -39,7 +39,8 @@ class FindingListModel(QAbstractListModel):
             return finding
         if role == Qt.ItemDataRole.DisplayRole:
             return (
-                f"{finding.finding_id} / {finding.layer} · "
-                f"{finding.confidence} · {finding.suspected_side}"
+                f"{finding.finding_id} · {finding.layer} · "
+                f"t={finding.deviation_ts:.6f}s · "
+                f"{finding.suspected_side} · {finding.observed} → {finding.expected}"
             )
         return None

@@ -8,6 +8,7 @@ from flashreport_gui.models import (
     FRAME_COLUMNS,
     FRAME_OBJECT_ROLE,
     FrameFilterProxyModel,
+    FrameTableDelegate,
     FrameTableModel,
 )
 
@@ -68,3 +69,70 @@ def test_frame_filter_searches_all_display_columns() -> None:
     assert proxy.rowCount() == 1
     proxy.set_query("does-not-match")
     assert proxy.rowCount() == 0
+
+
+def test_frame_model_keeps_chronology_and_filters_direction_and_cf() -> None:
+    first = _frame(2, 2.0)
+    second = _frame(1, 1.0, 0x456)
+    third = _frame(3, 3.0, 0x789)
+    annotations = {
+        first.frame_ref: FrameAnnotation(
+            frame_ref=first.frame_ref,
+            direction="tester->ecu",
+            isotp_summary="CF SN=1",
+            uds_summary=None,
+            summary="CF SN=1",
+        ),
+        second.frame_ref: FrameAnnotation(
+            frame_ref=second.frame_ref,
+            direction="ecu->tester",
+            isotp_summary="SF len=2",
+            uds_summary=None,
+            summary="SF len=2",
+        ),
+    }
+    model = FrameTableModel([first, second, third], annotations, start_ts=1.0)
+
+    assert model.frame_at(0) is second
+    assert model.frame_at(1) is first
+    assert model.data(model.index(0, 1)) == "0.000000"
+    assert model.data(model.index(1, 1)) == "1.000000"
+
+    proxy = FrameFilterProxyModel()
+    proxy.setSourceModel(model)
+    proxy.set_allowed_directions({"tester->ecu"})
+    assert proxy.rowCount() == 1
+    proxy.set_allowed_directions({"tester->ecu", "ecu->tester", "other"})
+    proxy.set_hide_cf(True)
+    assert proxy.rowCount() == 2
+
+
+def test_frame_delegate_classifies_short_protocol_bytes_without_overflow() -> None:
+    frame = _frame(1, 1.0)
+    annotation = FrameAnnotation(
+        frame_ref=frame.frame_ref,
+        direction="tester->ecu",
+        isotp_summary="SF len=2",
+        uds_summary="0x10 DiagnosticSessionControl",
+        summary="UDS request",
+    )
+
+    assert FrameTableDelegate._byte_roles(frame, annotation) == [
+        "pci",
+        "sid",
+        "subservice",
+    ]
+    fd_frame = RawFrame(
+        ts_seconds=2.0,
+        ts_display="2.000",
+        source_ts_metadata={},
+        can_id=0x123,
+        is_extended=False,
+        channel=1,
+        is_fd=True,
+        dlc=64,
+        data=bytes(range(64)),
+        source="synthetic",
+        line_no=2,
+    )
+    assert len(FrameTableDelegate._byte_roles(fd_frame, None)) == 64

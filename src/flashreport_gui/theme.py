@@ -1,4 +1,4 @@
-"""Light Fusion theme tokens / 浅色 Fusion 主题令牌。"""
+"""Light/dark Fusion theme tokens / 浅色与深色 Fusion 主题令牌。"""
 
 from __future__ import annotations
 
@@ -36,6 +36,20 @@ LIGHT_TOKENS = ThemeTokens(
     severity_medium="#B54708",
     severity_low="#1D4ED8",
     icon_neutral="#5B6773",
+)
+
+
+DARK_TOKENS = ThemeTokens(
+    background="#1B2027",
+    panel="#252B34",
+    border="#3A4653",
+    text_primary="#E7ECF2",
+    text_secondary="#AAB6C4",
+    selection="#35536E",
+    severity_high="#FF827A",
+    severity_medium="#F6C56B",
+    severity_low="#83B7FF",
+    icon_neutral="#B8C4D1",
 )
 
 
@@ -79,6 +93,17 @@ def build_stylesheet(tokens: ThemeTokens = LIGHT_TOKENS) -> str:
         border-radius: 4px;
         background: {tokens.panel};
     }}
+    QLineEdit, QComboBox {{
+        min-height: 26px;
+        padding: 2px 6px;
+        border: 1px solid {tokens.border};
+        border-radius: 4px;
+        background: {tokens.panel};
+        color: {tokens.text_primary};
+    }}
+    QCheckBox {{ spacing: 4px; color: {tokens.text_primary}; }}
+    QCheckBox::indicator {{ width: 14px; height: 14px; }}
+    QToolTip {{ background: {tokens.panel}; color: {tokens.text_primary}; border: 1px solid {tokens.border}; }}
     QToolBar QPushButton:hover, QPushButton:hover {{ background: {tokens.selection}; }}
     QPushButton:disabled {{ color: {tokens.text_secondary}; background: {tokens.background}; }}
     QLabel#brandLabel {{ font-size: 12pt; font-weight: 600; padding: 0 8px 0 2px; }}
@@ -129,6 +154,10 @@ def build_stylesheet(tokens: ThemeTokens = LIGHT_TOKENS) -> str:
     QFrame[severity="medium"] {{ border-left: 4px solid {tokens.severity_medium}; }}
     QFrame[severity="low"] {{ border-left: 4px solid {tokens.severity_low}; }}
     QLabel#secondaryText {{ color: {tokens.text_secondary}; }}
+    QLabel#filterLabel, QLabel#dataLegend {{ color: {tokens.text_secondary}; }}
+    QListView {{ border: 1px solid {tokens.border}; alternate-background-color: {tokens.background}; }}
+    QListView::item {{ padding: 6px 8px; min-height: 28px; }}
+    QListView::item:selected {{ background: {tokens.selection}; color: {tokens.text_primary}; }}
     QLabel#statusState[state="ERROR"] {{ color: {tokens.severity_high}; }}
     QLabel#statusState[state="RESULT"] {{ color: {tokens.severity_low}; }}
     """

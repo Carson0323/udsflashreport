@@ -55,6 +55,9 @@ M6-C adds centralized light ThemeTokens, SVG toolbar icons, size/spacing constra
 M7 已加入 requirements.lock、部署预检、带 Qt DLL 运行时路径保护和公开样例分析自检的 PyInstaller onedir 构建 benchmark，以及仅本机运行的私有语料错误注入/回归工具；在人工审核完成前不会创建 GitHub Release。
 M7 adds requirements.lock, deployment preflight, a PyInstaller onedir build benchmark with Qt DLL runtime-path protection and public-sample analysis smoke testing, and local-only private-corpus fault-injection/regression tools. No GitHub Release will be created before human review is complete.
 
+本轮 GUI 增强已支持更紧凑的 CH/DLC 列、按时间排序、方向与 CF 筛选、Data 字节语义色块、Finding 到证据行的直接定位、深浅色主题切换，以及大规模 Finding 的虚拟列表；私有报文仍只在本机处理。
+This GUI refinement adds compact CH/DLC columns, chronological sorting, direction and CF filters, semantic Data-byte color blocks, direct Finding-to-evidence navigation, light/dark themes, and a virtual list for large Finding sets. Private traces remain local-only.
+
 开发按冻结规格 M0→M7 进行，每个里程碑都必须通过对应的自动化测试 Gate。
 Development follows the frozen M0→M7 specification; each milestone must pass its automated test Gate.
 

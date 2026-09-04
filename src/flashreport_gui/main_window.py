@@ -6,16 +6,22 @@ from collections.abc import Sequence
 from pathlib import Path
 from time import monotonic
 
-from PySide6.QtCore import QItemSelectionModel, QSettings, QSize, QTimer, Qt, Signal, Slot
+from PySide6.QtCore import QItemSelection, QItemSelectionModel, QSettings, QSize, QTimer, Qt, Signal, Slot
 from PySide6.QtGui import QCloseEvent
 from PySide6.QtWidgets import (
     QFileDialog,
+    QApplication,
+    QCheckBox,
     QFrame,
+    QHeaderView,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
+    QListView,
     QMainWindow,
     QPushButton,
     QScrollArea,
+    QSizePolicy,
     QSplitter,
     QTabWidget,
     QTableView,
@@ -33,12 +39,14 @@ from .models import (
     AnnotationRole,
     ConversationTreeModel,
     FindingListModel,
+    FindingRole,
     FrameFilterProxyModel,
     FrameObjectRole,
     FrameRefRole,
+    FrameTableDelegate,
     FrameTableModel,
 )
-from .theme import icon_for
+from .theme import DARK_TOKENS, LIGHT_TOKENS, apply_theme, icon_for
 
 
 class MainWindow(QMainWindow):
@@ -76,12 +84,18 @@ class MainWindow(QMainWindow):
         self.resize(1440, 900)
         self.setMinimumSize(1100, 650)
         self._settings = settings or QSettings()
+        self._dark_mode = self._setting_bool(self._settings.value("ui/dark_mode", False))
+        self._theme_tokens = DARK_TOKENS if self._dark_mode else LIGHT_TOKENS
+        app = QApplication.instance()
+        if app is not None:
+            apply_theme(app, self._theme_tokens)
         self._bundle: TraceBundle | None = None
         self._analysis_result: AnalysisResult | None = None
         self._config = load_persisted_config(self._settings)
         self._state = "EMPTY"
         self._active_path: str | None = None
         self._exporting = False
+        self._finding_card_limit = 100
         self.heartbeatMaxGapMs = 0.0  # noqa: N815
         self._heartbeat_last = monotonic()
         self._heartbeat_timer = QTimer(self)
@@ -113,6 +127,13 @@ class MainWindow(QMainWindow):
         self.analyzeButton.clicked.connect(self.start_analysis)
         self.exportButton.clicked.connect(self._export_file_dialog)
         self.settingsButton.clicked.connect(self._open_settings_dialog)
+        self.themeButton.clicked.connect(self._toggle_theme)
+
+    @staticmethod
+    def _setting_bool(value: object) -> bool:
+        if isinstance(value, bool):
+            return value
+        return str(value).strip().casefold() in {"1", "true", "yes", "on"}
 
     def _build_toolbar(self) -> None:
         self.toolbar = QToolBar("FlashReport / 工具栏", self)
@@ -122,7 +143,7 @@ class MainWindow(QMainWindow):
         self.addToolBar(self.toolbar)
         self.brandIcon = QLabel(self.toolbar)
         self.brandIcon.setObjectName("brandIcon")
-        self.brandIcon.setPixmap(icon_for("flashreport").pixmap(20, 20))
+        self.brandIcon.setPixmap(icon_for("flashreport", self._theme_tokens).pixmap(20, 20))
         self.toolbar.addWidget(self.brandIcon)
         self.brandLabel = QLabel("FlashReport / Trace 分析", self.toolbar)
         self.brandLabel.setObjectName("brandLabel")
@@ -131,6 +152,12 @@ class MainWindow(QMainWindow):
         self.analyzeButton = self._toolbar_button("Analyze / 分析", "analyzeButton")
         self.exportButton = self._toolbar_button("Export / 导出", "exportButton")
         self.settingsButton = self._toolbar_button("Settings / 设置", "settingsButton")
+        self.themeButton = QPushButton(self.toolbar)
+        self.themeButton.setObjectName("themeButton")
+        self.themeButton.setCheckable(True)
+        self.themeButton.setChecked(self._dark_mode)
+        self.toolbar.addWidget(self.themeButton)
+        self._update_theme_button()
 
     def _toolbar_button(self, text: str, object_name: str) -> QPushButton:
         button = QPushButton(text, self.toolbar)
@@ -142,9 +169,39 @@ class MainWindow(QMainWindow):
             "settingsButton": "settings",
         }.get(object_name)
         if icon_name:
-            button.setIcon(icon_for(icon_name))
+            button.setIcon(icon_for(icon_name, self._theme_tokens))
         self.toolbar.addWidget(button)
         return button
+
+    def _update_theme_button(self) -> None:
+        self.themeButton.setText("Light / 浅色" if self._dark_mode else "Dark / 深色")
+        self.themeButton.setToolTip(
+            "Switch to light mode / 切换到浅色模式"
+            if self._dark_mode
+            else "Switch to dark mode / 切换到深色模式"
+        )
+
+    @Slot()
+    def _toggle_theme(self) -> None:
+        self._dark_mode = not self._dark_mode
+        self._theme_tokens = DARK_TOKENS if self._dark_mode else LIGHT_TOKENS
+        app = QApplication.instance()
+        if app is not None:
+            apply_theme(app, self._theme_tokens)
+        self._update_theme_button()
+        self.brandIcon.setPixmap(icon_for("flashreport", self._theme_tokens).pixmap(20, 20))
+        for button, icon_name in (
+            (self.openButton, "open"),
+            (self.analyzeButton, "analyze"),
+            (self.exportButton, "export"),
+            (self.settingsButton, "settings"),
+        ):
+            button.setIcon(icon_for(icon_name, self._theme_tokens))
+        self.frameModel.set_direction_highlighting(
+            self.highlightDirectionCheck.isChecked(), dark_mode=self._dark_mode
+        )
+        self.frameDelegate.set_dark_mode(self._dark_mode)
+        self._settings.setValue("ui/dark_mode", self._dark_mode)
 
     @property
     def state(self) -> str:
@@ -196,6 +253,7 @@ class MainWindow(QMainWindow):
         frame_heading = QLabel("CAN Frames / CAN 帧", frame_panel)
         frame_heading.setObjectName("panelHeading")
         frame_layout.addWidget(frame_heading)
+        self._build_frame_filter_bar(frame_panel, frame_layout)
         self.frameTable = QTableView(frame_panel)
         self.frameTable.setObjectName("frameTable")
         self.frameTable.setModel(self.frameProxyModel)
@@ -206,8 +264,16 @@ class MainWindow(QMainWindow):
         self.frameTable.sortByColumn(0, Qt.SortOrder.AscendingOrder)
         self.frameTable.setWordWrap(False)
         self.frameTable.verticalHeader().setVisible(False)
-        self.frameTable.horizontalHeader().setStretchLastSection(True)
+        self.frameTable.horizontalHeader().setStretchLastSection(False)
         self.frameTable.setMinimumWidth(520)
+        self.frameTable.setToolTip(
+            "Data colors: PCI / SID / Subservice / DID or payload\n"
+            "数据色块：PCI / 服务号 / 子服务号 / DID 或数据"
+        )
+        self.frameDelegate = FrameTableDelegate(self.frameTable)
+        self.frameDelegate.set_dark_mode(self._dark_mode)
+        self.frameTable.setItemDelegate(self.frameDelegate)
+        self._configure_frame_columns()
         self.emptyCenterLabel = QLabel(
             "Open an ASC/BLF trace to begin / 请打开 ASC/BLF Trace 开始分析",
             frame_panel,
@@ -232,6 +298,10 @@ class MainWindow(QMainWindow):
         finding_heading = QLabel("FINDINGS / 发现", finding_panel)
         finding_heading.setObjectName("panelHeading")
         finding_panel_layout.addWidget(finding_heading)
+        self.findingSummaryLabel = QLabel("No findings / 未发现", finding_panel)
+        self.findingSummaryLabel.setObjectName("findingSummary")
+        self.findingSummaryLabel.setWordWrap(True)
+        finding_panel_layout.addWidget(self.findingSummaryLabel)
         self.ambiguousLabel = QLabel("AMBIGUOUS / 需人工复核", finding_panel)
         self.ambiguousLabel.setObjectName("ambiguousBadge")
         self.ambiguousLabel.setWordWrap(True)
@@ -251,8 +321,21 @@ class MainWindow(QMainWindow):
         self.findingListLayout.setSpacing(8)
         self.findingListLayout.addStretch(1)
         self.findingList.setWidget(self.findingListWidget)
+        self.findingListView = QListView(self.findingListWidget)
+        self.findingListView.setObjectName("findingListView")
+        self.findingListView.setModel(self.findingModel)
+        self.findingListView.setSelectionMode(QListView.SelectionMode.SingleSelection)
+        self.findingListView.setAlternatingRowColors(True)
+        self.findingListView.setUniformItemSizes(True)
+        self.findingListView.setWordWrap(False)
+        self.findingListView.setVerticalScrollMode(QListView.ScrollMode.ScrollPerPixel)
+        self.findingListView.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.findingListView.setVisible(False)
+        finding_selection = self.findingListView.selectionModel()
+        if finding_selection is not None:
+            finding_selection.currentChanged.connect(self._on_finding_selected)
 
-        main_splitter.setSizes([240, 760, 400])
+        main_splitter.setSizes([210, 930, 300])
         root_splitter.addWidget(main_splitter)
 
         self.detailTabs = QTabWidget(root_splitter)
@@ -271,6 +354,109 @@ class MainWindow(QMainWindow):
         selection = self.frameTable.selectionModel()
         if selection is not None:
             selection.currentChanged.connect(self._show_selected_frame)
+
+    def _build_frame_filter_bar(self, parent: QWidget, layout: QVBoxLayout) -> None:
+        bar = QWidget(parent)
+        bar.setObjectName("frameFilterBar")
+        bar_layout = QHBoxLayout(bar)
+        bar_layout.setContentsMargins(4, 0, 4, 2)
+        bar_layout.setSpacing(6)
+        filter_label = QLabel("Filter / 筛选", bar)
+        filter_label.setObjectName("filterLabel")
+        bar_layout.addWidget(filter_label)
+        self.frameSearch = QLineEdit(bar)
+        self.frameSearch.setObjectName("frameSearch")
+        self.frameSearch.setPlaceholderText("Search CAN ID / Data / UDS…")
+        self.frameSearch.setClearButtonEnabled(True)
+        self.frameSearch.setToolTip("Search all visible columns / 搜索所有可见列")
+        self.frameSearch.setMinimumWidth(150)
+        bar_layout.addWidget(self.frameSearch, 1)
+        self.directionTesterCheck = QCheckBox("T→E", bar)
+        self.directionTesterCheck.setObjectName("directionTesterCheck")
+        self.directionTesterCheck.setToolTip("Tester to ECU / 测试仪到 ECU")
+        self.directionEcuCheck = QCheckBox("E→T", bar)
+        self.directionEcuCheck.setObjectName("directionEcuCheck")
+        self.directionEcuCheck.setToolTip("ECU to Tester / ECU 到测试仪")
+        self.directionOtherCheck = QCheckBox("Other", bar)
+        self.directionOtherCheck.setObjectName("directionOtherCheck")
+        self.directionOtherCheck.setToolTip("Unclassified direction / 未归类方向")
+        for checkbox in (
+            self.directionTesterCheck,
+            self.directionEcuCheck,
+            self.directionOtherCheck,
+        ):
+            checkbox.setChecked(True)
+            bar_layout.addWidget(checkbox)
+        self.showCfCheck = QCheckBox("Show CF", bar)
+        self.showCfCheck.setObjectName("showCfCheck")
+        self.showCfCheck.setChecked(True)
+        self.showCfCheck.setToolTip("Include consecutive frames / 显示连续帧 CF")
+        bar_layout.addWidget(self.showCfCheck)
+        self.highlightDirectionCheck = QCheckBox("Color direction", bar)
+        self.highlightDirectionCheck.setObjectName("highlightDirectionCheck")
+        self.highlightDirectionCheck.setToolTip(
+            "Color T→E and E→T rows differently / 用不同底色区分 T→E 与 E→T"
+        )
+        bar_layout.addWidget(self.highlightDirectionCheck)
+        self.dataLegendLabel = QLabel("PCI · SID · Sub · DID", bar)
+        self.dataLegendLabel.setObjectName("dataLegend")
+        self.dataLegendLabel.setToolTip(
+            "Data byte colors / 数据字节颜色：PCI、服务号、子服务号、DID/数据"
+        )
+        bar_layout.addWidget(self.dataLegendLabel)
+        layout.addWidget(bar)
+        self.frameSearch.textChanged.connect(self.frameProxyModel.set_query)
+        for checkbox in (
+            self.directionTesterCheck,
+            self.directionEcuCheck,
+            self.directionOtherCheck,
+            self.showCfCheck,
+        ):
+            checkbox.stateChanged.connect(self._apply_frame_filters)
+        self.highlightDirectionCheck.stateChanged.connect(self._apply_direction_highlighting)
+
+    def _configure_frame_columns(self) -> None:
+        header = self.frameTable.horizontalHeader()
+        widths = {
+            0: 48,   # row number / 序号
+            1: 125,  # timestamp / 时间
+            2: 92,   # delta / 间隔
+            3: 42,   # CH
+            4: 90,   # CAN ID
+            5: 100,  # direction / 方向
+            6: 40,   # DLC
+            7: 230,  # data / 数据
+            8: 150,  # ISO-TP
+            9: 230,  # UDS
+            10: 0,   # Summary retained for compatibility but hidden / 兼容保留但隐藏
+        }
+        for section, width in widths.items():
+            if section == 10:
+                self.frameTable.setColumnHidden(section, True)
+                continue
+            header.setSectionResizeMode(section, QHeaderView.ResizeMode.Fixed)
+            header.resizeSection(section, width)
+        header.setMinimumSectionSize(32)
+
+    @Slot()
+    def _apply_frame_filters(self) -> None:
+        directions = {
+            direction
+            for direction, checkbox in (
+                ("tester->ecu", self.directionTesterCheck),
+                ("ecu->tester", self.directionEcuCheck),
+                ("other", self.directionOtherCheck),
+            )
+            if checkbox.isChecked()
+        }
+        self.frameProxyModel.set_allowed_directions(directions)
+        self.frameProxyModel.set_hide_cf(not self.showCfCheck.isChecked())
+
+    @Slot()
+    def _apply_direction_highlighting(self) -> None:
+        self.frameModel.set_direction_highlighting(
+            self.highlightDirectionCheck.isChecked(), dark_mode=self._dark_mode
+        )
 
     def _add_detail_tab(self, object_name: str, title: str, text: str) -> None:
         tab = QWidget(self.detailTabs)
@@ -293,7 +479,7 @@ class MainWindow(QMainWindow):
         self.statusFindingCount.setObjectName("statusFindingCount")
         self.statusState = QLabel("EMPTY", status)
         self.statusState.setObjectName("statusState")
-        self.statusChannel = QLabel("Channel / 通道: —", status)
+        self.statusChannel = QLabel("CH / 通道: —", status)
         self.statusChannel.setObjectName("statusChannel")
         status.addPermanentWidget(self.statusFrameCount)
         status.addPermanentWidget(self.statusFindingCount)
@@ -529,26 +715,44 @@ class MainWindow(QMainWindow):
 
     def _update_channel_status(self, bundle: TraceBundle) -> None:
         channels = ", ".join(str(channel) for channel in bundle.quality.source_channels) or "—"
-        self.statusChannel.setText(f"Channel / 通道: {channels}")
+        self.statusChannel.setText(f"CH / 通道: {channels}")
 
     def _clear_finding_cards(self) -> None:
         while self.findingListLayout.count():
             item = self.findingListLayout.takeAt(0)
             widget = item.widget()
             if widget is not None:
-                widget.deleteLater()
-        self.findingListLayout.addStretch(1)
+                if widget is self.findingListView:
+                    widget.hide()
+                else:
+                    widget.deleteLater()
 
     def _render_findings(self, findings: Sequence[Finding]) -> None:
         self._clear_finding_cards()
+        self.findingSummaryLabel.setText(
+            f"{len(findings):,} findings / {len(findings):,} 条发现"
+            if findings
+            else "No findings / 未发现"
+        )
         if not findings:
             empty = QLabel("No protocol deviations found / 未发现协议偏差", self.findingListWidget)
             empty.setObjectName("emptyState")
             empty.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
-            self.findingListLayout.insertWidget(0, empty)
+            self.findingListLayout.addWidget(empty)
+            self.findingListLayout.addStretch(1)
+            return
+        if len(findings) > self._finding_card_limit:
+            self.findingSummaryLabel.setText(
+                f"{len(findings):,} findings / {len(findings):,} 条发现 · "
+                "select one to focus evidence / 选择一条以定位证据"
+            )
+            self.findingListLayout.addWidget(self.findingListView)
+            self.findingListView.show()
+            self.findingListView.setCurrentIndex(self.findingModel.index(-1, 0))
             return
         for finding in findings:
-            self.findingListLayout.insertWidget(self.findingListLayout.count() - 1, self._finding_card(finding))
+            self.findingListLayout.addWidget(self._finding_card(finding))
+        self.findingListLayout.addStretch(1)
 
     def _finding_card(self, finding: Finding) -> QFrame:
         card = QFrame(self.findingListWidget)
@@ -563,7 +767,8 @@ class MainWindow(QMainWindow):
         layout.addWidget(title)
         meta = QLabel(
             f"Confidence / 置信度: {finding.confidence} · "
-            f"Side / 责任侧: {finding.suspected_side}",
+            f"Side / 责任侧: {finding.suspected_side} · "
+            f"t={finding.deviation_ts:.6f}s",
             card,
         )
         meta.setObjectName("secondaryText")
@@ -588,16 +793,55 @@ class MainWindow(QMainWindow):
         if getattr(evidence, "type", None) == "frame":
             button.setText("Jump / 跳转")
             button.setObjectName(f"evidenceJump_{finding.finding_id}_{index}")
-            button.clicked.connect(lambda _checked=False, item=evidence: self.jump_to_frame(item))
+            button.clicked.connect(
+                lambda _checked=False, item=evidence: self.jump_to_frame(item, finding=finding)
+            )
         else:
             button.setText("Show / 查看")
             button.setObjectName(f"evidenceShow_{finding.finding_id}_{index}")
-            button.clicked.connect(lambda _checked=False, item=evidence: self.show_interval(item))
+            button.clicked.connect(
+                lambda _checked=False, item=evidence: self.show_interval(item, finding=finding)
+            )
         button.setEnabled(True)
         row_layout.addWidget(button)
         layout.addWidget(row)
 
-    def jump_to_frame(self, evidence: object) -> bool:
+    def _reset_frame_filters_for_focus(self) -> None:
+        """Reveal evidence rows even when the current filter hides them."""
+
+        self.frameSearch.clear()
+        self.directionTesterCheck.setChecked(True)
+        self.directionEcuCheck.setChecked(True)
+        self.directionOtherCheck.setChecked(True)
+        self.showCfCheck.setChecked(True)
+        self.statusBar().showMessage(
+            "Filters reset to show evidence / 已清除筛选以显示证据", 4000
+        )
+
+    def _set_finding_evidence_detail(self, finding: Finding, evidence: object) -> None:
+        detail = self.findChild(QLabel, "evidenceDetailTabText")
+        if detail is None:
+            return
+        evidence_type = getattr(evidence, "type", "evidence")
+        location = (
+            f"Frame / 帧: {getattr(evidence, 'frame_ref', 'unknown')}"
+            if evidence_type == "frame"
+            else f"Interval / 区间: {getattr(evidence, 'ts_start', 0.0):.6f}s – "
+            f"{getattr(evidence, 'ts_end', 0.0):.6f}s"
+        )
+        detail.setText(
+            f"Finding / 发现: {finding.finding_id} ({finding.layer})\n"
+            f"Category / 类别: {finding.category}\n"
+            f"Deviation / 偏差时刻: {finding.deviation_ts:.6f}s\n"
+            f"Side / 责任侧: {finding.suspected_side} · "
+            f"Confidence / 置信度: {finding.confidence}\n"
+            f"Observed / 观测: {finding.observed}\n"
+            f"Expected / 期望: {finding.expected}\n"
+            f"{location}\n"
+            f"Evidence / 证据: {getattr(evidence, 'summary', '')}"
+        )
+
+    def jump_to_frame(self, evidence: object, *, finding: Finding | None = None) -> bool:
         """Select the exact FrameEvidence row / 选中 FrameEvidence 对应的精确帧。"""
 
         frame_ref = getattr(evidence, "frame_ref", evidence if isinstance(evidence, str) else None)
@@ -613,7 +857,7 @@ class MainWindow(QMainWindow):
             return False
         proxy_index = self.frameProxyModel.mapFromSource(source_index)
         if not proxy_index.isValid():
-            self.frameProxyModel.set_query("")
+            self._reset_frame_filters_for_focus()
             proxy_index = self.frameProxyModel.mapFromSource(source_index)
         if not proxy_index.isValid():
             return False
@@ -623,10 +867,14 @@ class MainWindow(QMainWindow):
             selection.select(proxy_index, QItemSelectionModel.SelectionFlag.Select | QItemSelectionModel.SelectionFlag.Rows)
         self.frameTable.setCurrentIndex(proxy_index)
         self.frameTable.scrollTo(proxy_index, QTableView.ScrollHint.PositionAtCenter)
-        self.detailTabs.setCurrentWidget(self.frameDetailTab)
+        if finding is not None:
+            self._set_finding_evidence_detail(finding, evidence)
+            self.detailTabs.setCurrentWidget(self.evidenceDetailTab)
+        else:
+            self.detailTabs.setCurrentWidget(self.frameDetailTab)
         return True
 
-    def show_interval(self, evidence: object) -> bool:
+    def show_interval(self, evidence: object, *, finding: Finding | None = None) -> bool:
         """Highlight the observed window and explain the absence / 高亮区间并说明缺失。"""
 
         start = getattr(evidence, "ts_start", None)
@@ -641,25 +889,29 @@ class MainWindow(QMainWindow):
         selection = self.frameTable.selectionModel()
         if selection is not None:
             selection.clearSelection()
-            for row in matching_rows:
-                source_index = self.frameModel.index(row, 0)
-                proxy_index = self.frameProxyModel.mapFromSource(source_index)
-                if proxy_index.isValid():
-                    selection.select(
-                        proxy_index,
-                        QItemSelectionModel.SelectionFlag.Select | QItemSelectionModel.SelectionFlag.Rows,
-                    )
+            first = self.frameProxyModel.mapFromSource(self.frameModel.index(matching_rows[0], 0)) if matching_rows else None
+            last = self.frameProxyModel.mapFromSource(self.frameModel.index(matching_rows[-1], 0)) if matching_rows else None
+            if first is None or not first.isValid() or last is None or not last.isValid():
+                self._reset_frame_filters_for_focus()
+                first = self.frameProxyModel.mapFromSource(self.frameModel.index(matching_rows[0], 0)) if matching_rows else None
+                last = self.frameProxyModel.mapFromSource(self.frameModel.index(matching_rows[-1], 0)) if matching_rows else None
+            if first is not None and first.isValid() and last is not None and last.isValid():
+                selection.select(
+                    QItemSelection(first, last),
+                    QItemSelectionModel.SelectionFlag.Select | QItemSelectionModel.SelectionFlag.Rows,
+                )
             if matching_rows:
-                first = self.frameProxyModel.mapFromSource(self.frameModel.index(matching_rows[0], 0))
-                last = self.frameProxyModel.mapFromSource(self.frameModel.index(matching_rows[-1], 0))
-                if first.isValid():
+                if first is not None and first.isValid():
                     self.frameTable.setCurrentIndex(first)
                     self.frameTable.scrollTo(first, QTableView.ScrollHint.PositionAtCenter)
-                if last.isValid():
+                if last is not None and last.isValid():
                     self.frameTable.scrollTo(last, QTableView.ScrollHint.PositionAtCenter)
         detail = self.findChild(QLabel, "evidenceDetailTabText")
         if detail is not None:
             detail.setText(
+                f"Finding / 发现: {getattr(finding, 'finding_id', 'evidence')}\n"
+                f"Observed / 观测: {getattr(finding, 'observed', '')}\n"
+                f"Expected / 期望: {getattr(finding, 'expected', '')}\n"
                 f"Absence window / 缺失区间: {start:.6f}s – {end:.6f}s\n"
                 f"Expected role / 期望方向: {getattr(evidence, 'expected_role', 'unknown')}\n"
                 f"Expected kind / 期望类型: {getattr(evidence, 'expected_kind', 'unknown')}\n"
@@ -669,6 +921,20 @@ class MainWindow(QMainWindow):
             )
         self.detailTabs.setCurrentWidget(self.evidenceDetailTab)
         return True
+
+    @Slot(object, object)
+    def _on_finding_selected(self, current: object, previous: object) -> None:
+        del previous
+        if not hasattr(current, "isValid") or not current.isValid():
+            return
+        finding = current.data(FindingRole)
+        if not isinstance(finding, Finding) or not finding.evidence:
+            return
+        evidence = finding.evidence[0]
+        if getattr(evidence, "type", None) == "frame":
+            self.jump_to_frame(evidence, finding=finding)
+        else:
+            self.show_interval(evidence, finding=finding)
 
     def _show_selected_frame(self, current: object, previous: object) -> None:
         del previous
@@ -685,11 +951,13 @@ class MainWindow(QMainWindow):
         detail.setText(
             f"Frame / 帧: {frame.frame_ref}\n"
             f"Time / 时间: {frame.ts_display} ({frame.ts_seconds:.6f}s)\n"
-            f"Channel / 通道: {frame.channel}\n"
+            f"CH / 通道: {frame.channel}\n"
             f"CAN ID: {frame.can_id:X}\n"
             f"DLC: {frame.dlc}\n"
             f"Data / 数据: {' '.join(f'{byte:02X}' for byte in frame.data)}\n"
-            f"Summary / 摘要: {getattr(annotation, 'summary', 'other')}"
+            f"Direction / 方向: {getattr(annotation, 'direction', 'other')}\n"
+            f"ISO-TP: {getattr(annotation, 'isotp_summary', '') or '—'}\n"
+            f"UDS: {getattr(annotation, 'uds_summary', '') or '—'}"
         )
 
     def _restore_ui_state(self) -> None:

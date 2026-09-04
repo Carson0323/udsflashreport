@@ -100,7 +100,13 @@ def build(output_path: Path) -> dict[str, Any]:
     work_path = ROOT / "build" / "m7_pyinstaller"
     spec_path = ROOT / "build" / "m7_pyinstaller"
     if dist_path.exists():
-        shutil.rmtree(dist_path)
+        try:
+            shutil.rmtree(dist_path)
+        except PermissionError:
+            # Keep a package that is still open by the reviewer runnable.
+            dist_path = ROOT / "dist" / "m7_pyinstaller_next"
+            if dist_path.exists():
+                shutil.rmtree(dist_path)
     if work_path.exists():
         shutil.rmtree(work_path)
     assets = ROOT / "src" / "flashreport_gui" / "assets"

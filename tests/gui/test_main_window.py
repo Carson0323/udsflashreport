@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import QSettings
-from PySide6.QtWidgets import QFrame, QPushButton, QScrollArea, QTableView, QTabWidget, QTreeView
+from PySide6.QtWidgets import QLabel, QFrame, QPushButton, QScrollArea, QTableView, QTabWidget, QTreeView
 
 from flashreport_core.models import (
     AnalysisResult,
@@ -133,3 +133,54 @@ def test_main_window_projects_bundle_and_finding_cards(qtbot, tmp_path) -> None:
     assert window.statusFindingCount.text().endswith("1")
     assert window.findChild(QFrame, "findingCard_UDS-001") is not None
     assert window.findChild(QPushButton, "evidenceJump_UDS-001_0") is not None
+
+
+def test_large_finding_result_uses_virtual_list(qtbot, tmp_path) -> None:
+    settings = QSettings(str(tmp_path / "large.ini"), QSettings.Format.IniFormat)
+    window = MainWindow(settings=settings)
+    qtbot.addWidget(window)
+    bundle = _bundle()
+    frame = bundle.frames[0]
+    evidence = FrameEvidence(
+        frame_ref=frame.frame_ref,
+        ts=frame.ts_seconds,
+        line_no=frame.line_no,
+        can_id=frame.can_id,
+        role="tester->ecu",
+        data=frame.data,
+        summary="Observed request / 观测到请求",
+    )
+    findings = [
+        Finding(
+            finding_id=f"UDS-{index:03d}",
+            layer="UDS",
+            category="test",
+            deviation_ts=1.0 + index,
+            detected_ts=1.0 + index,
+            observed="request",
+            expected="response",
+            suspected_side="ecu",
+            confidence="high",
+            session=None,
+            service="DiagnosticSessionControl",
+            detail={},
+            evidence=[evidence],
+        )
+        for index in range(101)
+    ]
+    result = AnalysisResult(
+        bundle=bundle,
+        findings=findings,
+        first_deviation=findings[0],
+        report_data={},
+        frame_annotations=bundle.frame_annotations,
+        conversation_summaries=bundle.conversation_summaries,
+    )
+
+    window.set_analysis_result(result)
+
+    assert window.findingListView.isHidden() is False
+    assert window.findingSummaryLabel.text().startswith("101 findings")
+    assert window.findChild(QFrame, "findingCard_UDS-000") is None
+    window.findingListView.setCurrentIndex(window.findingModel.index(0, 0))
+    assert "Finding / 发现: UDS-000" in window.findChild(QLabel, "evidenceDetailTabText").text()

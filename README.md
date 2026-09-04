@@ -31,6 +31,9 @@ Currently in M2: ISO-TP eventization, PDU reconstruction, and transport validati
 M2 已支持 SF/FF/CF/FC 事件化、SN 校验、CF/STmin/BS/WAIT/OVFLW/超时诊断，以及按双向 conversation 进行 Transport Validator 校验。UDS 解码、会话、归因和报告将在后续里程碑完成。
 M2 supports SF/FF/CF/FC eventization, sequence-number checks, CF/STmin/BS/WAIT/OVFLW/timeout diagnostics, and bidirectional conversation validation. UDS decoding, sessions, attribution, and reports are scheduled for later milestones.
 
+M3 已支持 UDS 子集解码、NRC/0x78 Pending、事务歧义标记、诊断会话与刷写上下文。归因引擎和报告输出将在 M4/M5 完成。
+M3 supports the UDS subset decoder, NRC/0x78 pending handling, transaction ambiguity markers, diagnostic sessions, and flash context. Attribution and report output are scheduled for M4/M5.
+
 开发按冻结规格 M0→M7 进行，每个里程碑都必须通过对应的自动化测试 Gate。
 Development follows the frozen M0→M7 specification; each milestone must pass its automated test Gate.
 

@@ -155,7 +155,9 @@ def _conversation_summaries(
 
 
 def analyze_trace(bundle: TraceBundle, cfg: AppConfig) -> AnalysisResult:
-    raise NotImplementedError("trace analysis is scheduled for M2-M4")
+    from .attribution.engine import analyze_bundle
+
+    return analyze_bundle(bundle, cfg)
 
 
 def export_report(result: AnalysisResult, md_path: str | None, json_path: str | None) -> dict:

@@ -12,6 +12,7 @@ from .models import (
     ManualPair,
     RulesConfig,
     RULE_CONFIG_KEYS,
+    TimingProvenance,
     TimeoutsConfig,
 )
 
@@ -184,7 +185,7 @@ def config_from_dict(data: dict[str, Any]) -> AppConfig:
     rules = RulesConfig(
         **{field_name: data["rules"][json_key] for json_key, field_name in reverse_rule_keys.items()}
     )
-    return AppConfig(
+    config = AppConfig(
         schema_version=data["schema_version"],
         addressing=AddressingConfig(
             auto_detect=addressing["auto_detect"],
@@ -197,10 +198,51 @@ def config_from_dict(data: dict[str, Any]) -> AppConfig:
         timeouts=TimeoutsConfig(**data["timeouts"]),
         rules=rules,
     )
+    # The public AppConfig shape remains frozen by the specification.  Keep
+    # provenance as private runtime metadata so JSON round-tripping does not
+    # add an undocumented field while evaluators can still distinguish an
+    # explicitly configured timeout from a default assumption.
+    _attach_timeout_provenance(config, set(data["timeouts"]))
+    return config
 
 
 def default_config() -> AppConfig:
-    return AppConfig()
+    config = AppConfig()
+    _attach_timeout_provenance(config, set())
+    return config
+
+
+def _attach_timeout_provenance(config: AppConfig, explicit_keys: set[str]) -> AppConfig:
+    """Attach non-serialized timeout provenance to a frozen config object."""
+
+    source = lambda key: "user_configured" if key in explicit_keys else "default_assumption"
+    object.__setattr__(
+        config,
+        "_timing_provenance",
+        TimingProvenance(
+            isotp_fc=source("isotp_fc_ms"),
+            isotp_cf=source("isotp_cf_ms"),
+            uds_p2=source("uds_p2_ms"),
+            uds_p2_star=source("uds_p2_star_ms"),
+        ),
+    )
+    return config
+
+
+def timeout_provenance(config: AppConfig) -> TimingProvenance:
+    """Return timeout provenance for a config loaded through the public API."""
+
+    stored = getattr(config, "_timing_provenance", None)
+    if isinstance(stored, TimingProvenance):
+        return stored
+    defaults = TimeoutsConfig()
+    values = config.timeouts
+    return TimingProvenance(
+        isotp_fc="default_assumption" if values.isotp_fc_ms == defaults.isotp_fc_ms else "user_configured",
+        isotp_cf="default_assumption" if values.isotp_cf_ms == defaults.isotp_cf_ms else "user_configured",
+        uds_p2="default_assumption" if values.uds_p2_ms == defaults.uds_p2_ms else "user_configured",
+        uds_p2_star="default_assumption" if values.uds_p2_star_ms == defaults.uds_p2_star_ms else "user_configured",
+    )
 
 
 def load_config(path: str | None = None) -> AppConfig:
@@ -214,4 +256,3 @@ def save_config(config: AppConfig, path: str) -> None:
     with Path(path).open("w", encoding="utf-8", newline="\n") as handle:
         json.dump(config_to_dict(config), handle, ensure_ascii=False, indent=2)
         handle.write("\n")
-

@@ -55,6 +55,46 @@ def test_mask_regression_v09() -> None:
     assert addressed[0].pair_key is None
 
 
+def test_dynamic_29bit_pair_does_not_require_f1_tester_sa() -> None:
+    addressed = address_frames(
+        [
+            raw(0x18DAEF59, channel=4),
+            raw(0x18DA59EF, channel=4),
+        ],
+        AddressingConfig(),
+    )
+    # The zero-filled records have no UDS SID hint, so both IDs are still
+    # allowed to form a provisional pair for direct BLF review.
+    assert {frame.pair_key for frame in addressed} == {
+        "4:18DAEF59<->18DA59EF"
+    }
+    assert [frame.role for frame in addressed] == ["tester->ecu", "ecu->tester"]
+
+
+def test_dynamic_29bit_orientation_uses_uds_sid_hint() -> None:
+    addressed = address_frames(
+        [
+            raw(0x18DA59EF, channel=4),
+            RawFrame(
+                ts_seconds=1.1,
+                ts_display="1.100000",
+                source_ts_metadata={},
+                can_id=0x18DAEF59,
+                is_extended=True,
+                channel=4,
+                is_fd=False,
+                dlc=8,
+                data=bytes.fromhex("0250020000000000"),
+                source="asc",
+                line_no=2,
+            ),
+        ],
+        AddressingConfig(),
+    )
+    assert addressed[1].role == "ecu->tester"
+    assert addressed[0].role == "tester->ecu"
+
+
 def test_multi_channel_same_ids_isolated() -> None:
     frames = [
         raw(0x7E0, channel=1, is_extended=False),

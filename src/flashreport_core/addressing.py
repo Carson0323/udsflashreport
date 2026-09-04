@@ -4,6 +4,7 @@ from collections import defaultdict
 from typing import Iterable
 
 from .models import AddressedFrame, AddressingConfig, AppConfig, ManualPair, RawFrame
+from .uds.tables import POSITIVE_SERVICE_NAMES, SERVICE_NAMES
 
 
 FUNCTIONAL_REQUEST_ID = 0x18DB33F1
@@ -75,6 +76,48 @@ def _auto_11bit(frame: RawFrame) -> tuple[str, str] | None:
     return None
 
 
+def _normal_fixed_candidate(frame: RawFrame) -> tuple[int, int] | None:
+    """Return the symmetric 29-bit pair without assuming tester SA=F1.
+
+    The configured tester SA remains the primary, deterministic path.  This
+    fallback is intentionally limited to normal-fixed diagnostic IDs so a BLF
+    from another tester address can still be analyzed directly and reviewed
+    by a human.
+    """
+
+    if not frame.is_extended or (frame.can_id & 0x1FFF0000) != NORMAL_FIXED_BASE:
+        return None
+    first = (frame.can_id >> 8) & 0xFF
+    second = frame.can_id & 0xFF
+    if first == second:
+        return None
+    request_id = NORMAL_FIXED_BASE | (first << 8) | second
+    response_id = NORMAL_FIXED_BASE | (second << 8) | first
+    return request_id, response_id
+
+
+def _uds_sid_hint(frame: RawFrame) -> str | None:
+    """Classify a first SF/FF UDS SID for dynamic-pair orientation."""
+
+    if not frame.data:
+        return None
+    pci_type = frame.data[0] >> 4
+    if pci_type == 0x0:
+        payload_len = frame.data[0] & 0x0F
+        if payload_len < 1 or len(frame.data) < 2:
+            return None
+        sid = frame.data[1]
+    elif pci_type == 0x1 and len(frame.data) >= 3:
+        sid = frame.data[2]
+    else:
+        return None
+    if sid == 0x7F or sid in POSITIVE_SERVICE_NAMES:
+        return "response"
+    if sid in SERVICE_NAMES:
+        return "request"
+    return None
+
+
 def _address_one(frame: RawFrame, config: AddressingConfig) -> tuple[str, str | None]:
     for pair in config.manual_pairs:
         match = _manual_match(frame, pair)
@@ -101,11 +144,57 @@ def address_frames(
 ) -> list[AddressedFrame]:
     addressing = config or AddressingConfig()
     addressing = _addressing_config(addressing)
-    return [
-        AddressedFrame(**frame.__dict__, role=role, pair_key=pair_key)
-        for frame in frames
-        for role, pair_key in [_address_one(frame, addressing)]
-    ]
+    source_frames = list(frames)
+    addressed: list[AddressedFrame | None] = []
+    dynamic_groups: dict[tuple[int | str | None, tuple[int, int]], list[tuple[int, RawFrame, tuple[int, int]]]] = defaultdict(list)
+    for index, frame in enumerate(source_frames):
+        role, pair_key = _address_one(frame, addressing)
+        if role == "other":
+            candidate = _normal_fixed_candidate(frame)
+            if candidate is not None:
+                dynamic_groups[
+                    (frame.channel, tuple(sorted(candidate)))
+                ].append((index, frame, candidate))
+                addressed.append(None)
+                continue
+        addressed.append(AddressedFrame(**frame.__dict__, role=role, pair_key=pair_key))
+
+    for items in dynamic_groups.values():
+        request_id, response_id = items[0][2]
+        hints = [_uds_sid_hint(frame) for _index, frame, _candidate in items]
+        if not any(hints) and len({frame.can_id for _index, frame, _candidate in items}) < 2:
+            for index, frame, _candidate in items:
+                addressed[index] = AddressedFrame(
+                    **frame.__dict__, role="other", pair_key=None
+                )
+            continue
+        # First use a UDS request/response SID to orient the pair.  For CF/FC
+        # records, reuse that orientation.  If the trace contains no hint,
+        # retain the first observed ID as the provisional request side.
+        for _index, frame, candidate in items:
+            hint = _uds_sid_hint(frame)
+            if hint == "request":
+                request_id, response_id = frame.can_id, candidate[1] if frame.can_id == candidate[0] else candidate[0]
+                break
+            if hint == "response":
+                response_id, request_id = frame.can_id, candidate[1] if frame.can_id == candidate[0] else candidate[0]
+                break
+        pair_key = make_pair_key(items[0][1].channel, request_id, response_id)
+        for index, frame, _candidate in items:
+            if frame.can_id == request_id:
+                role = "tester->ecu"
+            elif frame.can_id == response_id:
+                role = "ecu->tester"
+            else:
+                role = "other"
+                pair_key_for_frame = None
+                addressed[index] = AddressedFrame(
+                    **frame.__dict__, role=role, pair_key=pair_key_for_frame
+                )
+                continue
+            addressed[index] = AddressedFrame(**frame.__dict__, role=role, pair_key=pair_key)
+
+    return [item for item in addressed if item is not None]
 
 
 def address_trace(

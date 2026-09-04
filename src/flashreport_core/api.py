@@ -161,7 +161,28 @@ def analyze_trace(bundle: TraceBundle, cfg: AppConfig) -> AnalysisResult:
 
 
 def export_report(result: AnalysisResult, md_path: str | None, json_path: str | None) -> dict:
-    raise NotImplementedError("report export is scheduled for M5")
+    from .report.json_out import write_json
+    from .report.markdown import render_markdown
+    from .report.validate import validate_report
+
+    report = dict(result.report_data)
+    validation = validate_report(report)
+    if not validation.ok:
+        raise ValueError("invalid report: " + "; ".join(validation.errors))
+    if md_path is not None:
+        from pathlib import Path
+
+        output = Path(md_path)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(render_markdown(report), encoding="utf-8")
+    if json_path is not None:
+        write_json(report, json_path)
+    return {
+        "report": report,
+        "validated": True,
+        "md_path": md_path,
+        "json_path": json_path,
+    }
 
 
 __all__ = [

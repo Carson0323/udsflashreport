@@ -399,10 +399,15 @@ def _annotate_uds(bundle: TraceBundle) -> dict[str, FrameAnnotation]:
     return annotations
 
 
-def analyze_bundle(bundle: TraceBundle, cfg: AppConfig) -> AnalysisResult:
+def analyze_bundle(
+    bundle: TraceBundle,
+    cfg: AppConfig,
+    *,
+    findings_path: str | None = None,
+) -> AnalysisResult:
     """Analyze loaded conversations and return findings plus GUI projections."""
 
-    specs = load_rule_specs()
+    specs = load_rule_specs(findings_path)
     findings: list[Finding] = []
     transaction_sets: dict[str, list[UdsTransaction]] = {}
     sessions_by_pair: dict[str, list[Any]] = {}

@@ -25,8 +25,8 @@ The GUI is a thin viewer over the core analysis engine; it does not perform live
 
 ## 项目状态 | Project Status
 
-当前处于 M4：确定性归因引擎与 Findings 开发阶段。
-Currently in M4: deterministic attribution engine and finding evaluators.
+当前处于 M5：CLI、报告输出与 Schema 校验开发阶段。
+Currently in M5: CLI, report output, and schema validation.
 
 M2 已支持 SF/FF/CF/FC 事件化、SN 校验、CF/STmin/BS/WAIT/OVFLW/超时诊断，以及按双向 conversation 进行 Transport Validator 校验。UDS 解码、会话、归因和报告将在后续里程碑完成。
 M2 supports SF/FF/CF/FC eventization, sequence-number checks, CF/STmin/BS/WAIT/OVFLW/timeout diagnostics, and bidirectional conversation validation. UDS decoding, sessions, attribution, and reports are scheduled for later milestones.
@@ -36,6 +36,9 @@ M3 supports the UDS subset decoder, NRC/0x78 pending handling, transaction ambig
 
 M4 已支持 findings.yaml 驱动的 7 类确定性归因、时序来源、证据契约、first deviation、事务歧义降级和 tester 先行错误对后续 ECU 超时的 supersede 标记。
 M4 supports seven findings driven by findings.yaml, timing provenance, evidence contracts, first-deviation selection, ambiguity confidence caps, and supersede marking when a prior tester error explains a later ECU timeout.
+
+M5 已支持直接分析 ASC/BLF、双语 Markdown/JSON 报告、报告 Schema 校验和 CLI 退出码。29 位标准诊断地址可在未配置 tester SA 时自动成对，结果保留歧义标记供测试人员确认。
+M5 supports direct ASC/BLF analysis, bilingual Markdown/JSON reports, report-schema validation, and CLI exit codes. Standard 29-bit diagnostic IDs can be paired automatically without a configured tester SA, with ambiguity retained for tester review.
 
 开发按冻结规格 M0→M7 进行，每个里程碑都必须通过对应的自动化测试 Gate。
 Development follows the frozen M0→M7 specification; each milestone must pass its automated test Gate.

@@ -9,6 +9,14 @@ from .uds.decoder import decode_uds
 from .uds.transaction_matcher import match_conversation
 
 
+def _spaced_hex(data: bytes) -> str:
+    return " ".join(f"{value:02X}" for value in data) or "—"
+
+
+def _ascii_preview(data: bytes) -> str:
+    return "".join(chr(value) if 0x20 <= value <= 0x7E else "." for value in data) or "—"
+
+
 def _hex(value: int | None, width: int = 0) -> str:
     if value is None:
         return "—"
@@ -38,7 +46,7 @@ def _routine_fields(raw: bytes) -> tuple[int | None, bytes]:
 
 def _message_detail(message: UdsMessage) -> dict[str, Any]:
     raw = bytes(message.raw)
-    raw_display = raw.hex().upper()
+    raw_display = _spaced_hex(raw)
     if message.sid == 0x36:
         raw_display = (
             f"36 BSC={message.block_seq:02X} payload_bytes={max(0, len(raw) - 2)}"
@@ -58,13 +66,25 @@ def _message_detail(message: UdsMessage) -> dict[str, Any]:
         detail.update({"start_address": address, "transfer_length": length})
     if message.sid == 0x31:
         routine_id, parameters = _routine_fields(raw)
-        detail.update({"routine_id": routine_id, "routine_parameters": parameters.hex().upper()})
+        detail.update(
+            {
+                "routine_id": routine_id,
+                "routine_parameters": _spaced_hex(parameters),
+                "routine_ascii": _ascii_preview(parameters),
+            }
+        )
     if message.sid == 0x36:
         detail["transfer_data_length"] = max(0, len(raw) - 2)
-    if message.sid in {0x2E, 0x6E} and len(raw) >= 3:
-        detail["write_data"] = raw[3:].hex().upper()
-    if message.sid in {0x22, 0x62} and len(raw) >= 3:
-        detail["read_data"] = raw[3:].hex().upper()
+    if message.sid in {0x22, 0x2E, 0x62, 0x6E} and len(raw) >= 3:
+        detail["did_bytes"] = _spaced_hex(raw[1:3])
+    if message.sid in {0x2E, 0x6E} and len(raw) > 3:
+        detail["write_data"] = _spaced_hex(raw[3:])
+        detail["write_ascii"] = _ascii_preview(raw[3:])
+    if message.sid in {0x22, 0x62} and len(raw) > 3:
+        detail["read_data"] = _spaced_hex(raw[3:])
+        detail["read_ascii"] = _ascii_preview(raw[3:])
+    if message.sid not in {0x36, 0x22, 0x2E, 0x62, 0x6E} and len(raw) > 1:
+        detail["service_data"] = _spaced_hex(raw[1:])
     return detail
 
 
@@ -79,8 +99,11 @@ def _step_detail(request: UdsMessage, response: UdsMessage | None) -> str:
         parts.append(f"SubFunction={_hex(request.subfunction, 2)}")
     if request.did is not None:
         parts.append(f"DID={_hex(request.did, 4)}")
+        if detail.get("did_bytes"):
+            parts.append(f"DID bytes={detail['did_bytes']}")
     if request.sid == 0x2E:
         parts.append(f"write_data={detail.get('write_data') or '—'}")
+        parts.append(f"ASCII={detail.get('write_ascii') or '—'}")
     if request.sid == 0x34:
         parts.append(f"start={_hex(detail['start_address'])}")
         parts.append(f"length={_hex(detail['transfer_length'])}")
@@ -90,6 +113,9 @@ def _step_detail(request: UdsMessage, response: UdsMessage | None) -> str:
     if request.sid == 0x31:
         parts.append(f"RoutineID={_hex(detail['routine_id'], 4)}")
         parts.append(f"params={detail['routine_parameters'] or '—'}")
+        parts.append(f"ASCII={detail.get('routine_ascii') or '—'}")
+    if request.sid not in {0x22, 0x2E, 0x31, 0x34, 0x36} and detail.get("service_data"):
+        parts.append(f"data={detail['service_data']}")
     if response is None:
         parts.append("response=missing")
     elif response.is_positive is False:
@@ -104,7 +130,10 @@ def _step_detail(request: UdsMessage, response: UdsMessage | None) -> str:
         )
     if request.sid == 0x22 and response is not None:
         response_detail = _message_detail(response)
+        if response_detail.get("did_bytes"):
+            parts.append(f"DID bytes={response_detail['did_bytes']}")
         parts.append(f"read_data={response_detail.get('read_data') or '—'}")
+        parts.append(f"ASCII={response_detail.get('read_ascii') or '—'}")
     return " · ".join(parts)
 
 
@@ -195,7 +224,7 @@ def _functional_steps(bundle: TraceBundle, start_index: int) -> list[dict[str, A
                 "did": message.did,
                 "block_seq": message.block_seq,
                 "status_key": "functional",
-                "request_raw": message.raw.hex().upper(),
+                "request_raw": _message_detail(message)["raw"],
                 "response_raw": None,
                 "detail": _step_detail(message, None),
                 "fields": _message_detail(message),

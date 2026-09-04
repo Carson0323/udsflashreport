@@ -61,6 +61,9 @@ This GUI refinement adds compact CH/DLC columns, chronological sorting, directio
 M8 已加入独立的中文/English UI 选择（表头与 CF/FF/BSC 等协议缩写保持英文）、干净的未加载空状态、所有详情页联动、可定位的 ECU NRC Finding（UDS-002）和人工复核原因说明；刷写流程页改为按步骤逐行展示的表格，列出会话、DID、RoutineID、下载起始地址/长度、TransferData 分段统计，并识别物理/功能寻址。TransferData 中间数据不会被流程摘要重复展开。
 M8 adds an independent Chinese/English UI selector (table headers and protocol abbreviations such as CF/FF/BSC stay in English), a clean pre-load empty state, synchronized detail tabs, locatable ECU NRC findings (UDS-002), and explicit manual-review reasons. The Flash Flow tab is a row-per-step table showing session, DID, RoutineID, download start/length, TransferData segment statistics, and physical/functional addressing. TransferData payload bodies are not duplicated in the workflow summary.
 
+当前协议字段按字节间隔显示，例如 `2E 12 34 31 32`；DID 除十六进制字节外，还显示关联数据的 ASCII 预览，Routine 参数和其他服务数据也采用相同格式。不可打印字节以 `.` 表示。
+Protocol fields are rendered byte-by-byte with spaces, for example `2E 12 34 31 32`; DID data also includes an ASCII preview, and Routine parameters and other service data use the same format. Non-printable bytes are shown as `.`.
+
 开发按冻结规格 M0→M7 进行，每个里程碑都必须通过对应的自动化测试 Gate。
 Development follows the frozen M0→M7 specification; each milestone must pass its automated test Gate.
 

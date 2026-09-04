@@ -434,7 +434,7 @@ def _message_details(message) -> dict[str, object]:
         "nrc": message.nrc,
         "nrc_name": message.nrc_text,
         "pending": message.pending,
-        "raw": message.raw.hex().upper(),
+        "raw": " ".join(f"{value:02X}" for value in message.raw) or "—",
     }
     raw = bytes(message.raw)
     if message.sid == 0x34 and len(raw) >= 3:
@@ -448,11 +448,22 @@ def _message_details(message) -> dict[str, object]:
             )
     if message.sid == 0x31 and len(raw) >= 4:
         details["routine_id"] = int.from_bytes(raw[2:4], "big")
-        details["routine_parameters"] = raw[4:].hex().upper()
-    if message.sid in {0x2E, 0x6E} and len(raw) >= 3:
-        details["write_data"] = raw[3:].hex().upper()
-    if message.sid in {0x22, 0x62} and len(raw) >= 3:
-        details["read_data"] = raw[3:].hex().upper()
+        details["routine_parameters"] = " ".join(f"{value:02X}" for value in raw[4:]) or "—"
+        details["routine_ascii"] = "".join(
+            chr(value) if 0x20 <= value <= 0x7E else "." for value in raw[4:]
+        ) or "—"
+    if message.sid in {0x22, 0x2E, 0x62, 0x6E} and len(raw) >= 3:
+        details["did_bytes"] = " ".join(f"{value:02X}" for value in raw[1:3])
+    if message.sid in {0x2E, 0x6E} and len(raw) > 3:
+        details["write_data"] = " ".join(f"{value:02X}" for value in raw[3:])
+        details["write_ascii"] = "".join(
+            chr(value) if 0x20 <= value <= 0x7E else "." for value in raw[3:]
+        ) or "—"
+    if message.sid in {0x22, 0x62} and len(raw) > 3:
+        details["read_data"] = " ".join(f"{value:02X}" for value in raw[3:])
+        details["read_ascii"] = "".join(
+            chr(value) if 0x20 <= value <= 0x7E else "." for value in raw[3:]
+        ) or "—"
     return details
 
 

@@ -249,15 +249,33 @@ def test_workflow_is_rendered_as_ordered_step_table(qtbot, tmp_path) -> None:
                 "status_key": "positive",
                 "fields": {"start_address": 0x1000, "transfer_length": 0x400},
                 "evidence_frame_refs": ("synthetic:1", "synthetic:2"),
-            }
+            },
+            {
+                "step_index": 2,
+                "ts_start": 2.0,
+                "addressing": "physical",
+                "sid": 0x2E,
+                "service_name": "WriteDataByIdentifier",
+                "status_key": "positive",
+                "did": 0x1234,
+                "fields": {
+                    "did_bytes": "12 34",
+                    "write_data": "31 32",
+                    "write_ascii": "12",
+                },
+                "response_fields": {"did_bytes": "12 34"},
+                "evidence_frame_refs": ("synthetic:3",),
+            },
         ],
     )
     window.set_analysis_result(result)
 
     table = window.findChild(QTableWidget, "workflowDetailTable")
     assert table is not None
-    assert table.rowCount() == 1
+    assert table.rowCount() == 2
     assert table.item(0, 0).text() == "1"
     assert "RequestDownload" in table.item(0, 3).text()
     assert "0x1000" in table.item(0, 4).text()
     assert "synthetic:1" in table.item(0, 6).text()
+    assert "DID 字节：12 34" in table.item(1, 4).text()
+    assert "写入 ASCII：12" in table.item(1, 4).text()

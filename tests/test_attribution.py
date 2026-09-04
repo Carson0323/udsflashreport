@@ -224,18 +224,24 @@ def test_standard_11bit_functional_address_is_explicit() -> None:
 
 def test_workflow_describes_read_write_did_content() -> None:
     pdus = [
-        _direct_pdu(bytes.fromhex("2E1234AABB"), 1.0, 1, "tester->ecu"),
+        _direct_pdu(bytes.fromhex("2E12343132"), 1.0, 1, "tester->ecu"),
         _direct_pdu(bytes.fromhex("6E1234"), 1.1, 2, "ecu->tester"),
         _direct_pdu(bytes.fromhex("221234"), 2.0, 3, "tester->ecu"),
-        _direct_pdu(bytes.fromhex("621234DEAD"), 2.1, 4, "ecu->tester"),
+        _direct_pdu(bytes.fromhex("6212344142"), 2.1, 4, "ecu->tester"),
     ]
     result = analyze_trace(_direct_bundle(pdus, 3.0), default_config())
     write_step = next(step for step in result.workflow_steps if step["sid"] == 0x2E)
     read_step = next(step for step in result.workflow_steps if step["sid"] == 0x22)
     assert "DID=0x1234" in write_step["detail"]
-    assert "write_data=AABB" in write_step["detail"]
+    assert "write_data=31 32" in write_step["detail"]
+    assert "ASCII=12" in write_step["detail"]
     assert "DID=0x1234" in read_step["detail"]
-    assert "read_data=DEAD" in read_step["detail"]
+    assert "read_data=41 42" in read_step["detail"]
+    assert "ASCII=AB" in read_step["detail"]
+    write_annotation = result.frame_annotations[pdus[0].frames[0].frame_ref]
+    assert write_annotation.uds_details["did_bytes"] == "12 34"
+    assert write_annotation.uds_details["write_data"] == "31 32"
+    assert write_annotation.uds_details["write_ascii"] == "12"
 
 
 def test_workflow_retains_functional_addressing_step() -> None:

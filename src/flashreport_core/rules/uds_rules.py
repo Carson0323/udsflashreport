@@ -139,8 +139,8 @@ def negative_response(_issue, ctx: RuleContext):
             "service": service,
             "nrc": response.nrc,
             "nrc_name": response.nrc_text,
-            "request_raw": transaction.request.raw.hex().upper(),
-            "response_raw": response.raw.hex().upper(),
+            "request_raw": " ".join(f"{value:02X}" for value in transaction.request.raw),
+            "response_raw": " ".join(f"{value:02X}" for value in response.raw),
             "request_frame_ref": transaction.pdu_req.frames[0].frame_ref
             if transaction.pdu_req and transaction.pdu_req.frames
             else None,

@@ -365,6 +365,9 @@ class MainWindow(QMainWindow):
             parts.append(self._t("subfunction", value=f"0x{int(step['subfunction']):02X}"))
         if step.get("did") is not None:
             parts.append(self._t("did", value=f"0x{int(step['did']):04X}"))
+            did_bytes = fields.get("did_bytes") or response_fields.get("did_bytes")
+            if did_bytes:
+                parts.append(self._t("did_bytes", value=did_bytes))
         if sid == 0x34:
             if fields.get("start_address") is not None:
                 parts.append(self._t("start_address", value=f"0x{int(fields['start_address']):X}"))
@@ -383,10 +386,15 @@ class MainWindow(QMainWindow):
             if fields.get("routine_id") is not None:
                 parts.append(self._t("routine_id", value=f"0x{int(fields['routine_id']):04X}"))
             parts.append(self._t("parameters", value=fields.get("routine_parameters") or "—"))
+            parts.append(self._t("ascii", value=fields.get("routine_ascii") or "—"))
         elif sid == 0x2E and fields.get("write_data") is not None:
             parts.append(self._t("write_data", value=fields.get("write_data") or "—"))
+            parts.append(self._t("write_ascii", value=fields.get("write_ascii") or "—"))
         elif sid == 0x22 and response_fields.get("read_data") is not None:
             parts.append(self._t("read_data", value=response_fields.get("read_data") or "—"))
+            parts.append(self._t("read_ascii", value=response_fields.get("read_ascii") or "—"))
+        if sid not in {0x22, 0x2E, 0x31, 0x34, 0x36} and fields.get("service_data"):
+            parts.append(self._t("data", value=fields["service_data"]))
         return " · ".join(parts)
 
     def _collapse_transfer_steps(self, steps: Sequence[dict]) -> list[dict]:
@@ -1345,10 +1353,14 @@ class MainWindow(QMainWindow):
             )),
             self._t("session", value=uds_details.get("session") or "—"),
         ]
+        if uds_details.get("did_bytes") is not None:
+            detail_lines.append(self._t("did_bytes", value=uds_details["did_bytes"]))
         if uds_details.get("read_data") is not None:
             detail_lines.append(self._t("read_data", value=uds_details["read_data"] or "—"))
+            detail_lines.append(self._t("read_ascii", value=uds_details.get("read_ascii") or "—"))
         if uds_details.get("write_data") is not None:
             detail_lines.append(self._t("write_data", value=uds_details["write_data"] or "—"))
+            detail_lines.append(self._t("write_ascii", value=uds_details.get("write_ascii") or "—"))
         if uds_details.get("start_address") is not None:
             detail_lines.append(
                 self._t("start_address", value=f"0x{uds_details['start_address']:X}")
@@ -1363,6 +1375,9 @@ class MainWindow(QMainWindow):
             )
             detail_lines.append(
                 self._t("parameters", value=uds_details.get("routine_parameters") or "—")
+            )
+            detail_lines.append(
+                self._t("ascii", value=uds_details.get("routine_ascii") or "—")
             )
         detail.setText(
             f"{self._t('frame', value=frame.frame_ref)}\n"

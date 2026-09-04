@@ -28,8 +28,8 @@ Launch the GUI with `flashreport-gui` (or `python -m flashreport_gui.app`).
 
 ## 项目状态 | Project Status
 
-当前处于 M6-A：PySide6 图形界面外壳与 Model/View 投影开发阶段。
-Currently in M6-A: PySide6 GUI shell and Model/View projection.
+当前处于 M6-B：PySide6 图形界面交互与异步工作器开发阶段。
+Currently in M6-B: PySide6 GUI interaction and asynchronous worker development.
 
 M2 已支持 SF/FF/CF/FC 事件化、SN 校验、CF/STmin/BS/WAIT/OVFLW/超时诊断，以及按双向 conversation 进行 Transport Validator 校验。UDS 解码、会话、归因和报告将在后续里程碑完成。
 M2 supports SF/FF/CF/FC eventization, sequence-number checks, CF/STmin/BS/WAIT/OVFLW/timeout diagnostics, and bidirectional conversation validation. UDS decoding, sessions, attribution, and reports are scheduled for later milestones.
@@ -43,8 +43,11 @@ M4 supports seven findings driven by findings.yaml, timing provenance, evidence 
 M5 已支持直接分析 ASC/BLF、双语 Markdown/JSON 报告、报告 Schema 校验和 CLI 退出码。29 位标准诊断地址可在未配置 tester SA 时自动成对，结果保留歧义标记供测试人员确认。
 M5 supports direct ASC/BLF analysis, bilingual Markdown/JSON reports, report-schema validation, and CLI exit codes. Standard 29-bit diagnostic IDs can be paired automatically without a configured tester SA, with ambiguity retained for tester review.
 
-M6-A 已提供 Qt Widgets 主窗口、会话树、原始帧表、Finding 证据卡片和底部详情页。GUI 只投影公开 API/models 对象；异步加载、分析、导出和证据跳转将在 M6-B 接入。
-M6-A provides the Qt Widgets main window, conversation tree, raw-frame table, Finding evidence cards, and detail tabs. The GUI only projects public API/models objects; asynchronous load/analyze/export and evidence navigation will be connected in M6-B.
+M6-A 提供了 Qt Widgets 主窗口、会话树、原始帧表、Finding 证据卡片和底部详情页，作为 M6-B 交互的基础。
+M6-A provides the Qt Widgets main window, conversation tree, raw-frame table, Finding evidence cards, and detail tabs as the foundation for M6-B interaction.
+
+M6-B 已将 Open/Analyze/Export 接入 QThreadPool，并提供错误状态、逐条 evidence 跳转、缺失区间展示和配置持久化。GUI 主线程只负责控件和 Model 更新。
+M6-B connects Open/Analyze/Export to QThreadPool and provides error states, per-evidence navigation, absence-window display, and configuration persistence. The GUI thread only updates widgets and models.
 
 开发按冻结规格 M0→M7 进行，每个里程碑都必须通过对应的自动化测试 Gate。
 Development follows the frozen M0→M7 specification; each milestone must pass its automated test Gate.

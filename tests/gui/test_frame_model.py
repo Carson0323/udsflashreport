@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Qt
+from PySide6.QtTest import QAbstractItemModelTester
 
 from flashreport_core.models import FrameAnnotation, RawFrame
 from flashreport_gui.models import (
@@ -39,6 +40,11 @@ def test_frame_table_has_frozen_columns_and_api_annotation_projection(qtbot) -> 
         )
     }
     model = FrameTableModel(frames, annotations, start_ts=10.0)
+    tester = QAbstractItemModelTester(
+        model,
+        QAbstractItemModelTester.FailureReportingMode.Warning,
+        model,
+    )
     qtbot.addWidget  # keep the test explicitly tied to pytest-qt availability
 
     assert model.columnCount() == 11

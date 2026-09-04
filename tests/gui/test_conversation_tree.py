@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import QModelIndex, Qt
+from PySide6.QtTest import QAbstractItemModelTester
 
 from flashreport_core.models import ConversationSummary
 from flashreport_gui.models import CONVERSATION_ROLE, ConversationTreeModel
@@ -25,6 +26,11 @@ def test_conversation_tree_groups_summaries_by_channel() -> None:
             _summary("2:18DA20F1<->18DAF120", 2, None),
         ]
     )
+    tester = QAbstractItemModelTester(
+        model,
+        QAbstractItemModelTester.FailureReportingMode.Warning,
+        model,
+    )
 
     assert model.columnCount() == 1
     assert model.rowCount(QModelIndex()) == 2
@@ -34,3 +40,5 @@ def test_conversation_tree_groups_summaries_by_channel() -> None:
     assert model.data(conversation_index) == "ECU-A"
     assert model.data(conversation_index, CONVERSATION_ROLE).pair_key.startswith("1:")
     assert model.parent(conversation_index) == channel_index
+    model.set_summaries([])
+    assert model.rowCount(QModelIndex()) == 0

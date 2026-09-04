@@ -1,0 +1,36 @@
+# Runtime/build lock for Python 3.11 on Windows x86_64.
+# Python 3.11 Windows x86_64 运行时/构建锁定清单。
+# Generated from the verified project virtual environment on 2026-09-04.
+# 由 2026-09-04 已验证的项目虚拟环境生成。
+
+PySide6==6.11.2
+PySide6_Addons==6.11.2
+PySide6_Essentials==6.11.2
+shiboken6==6.11.2
+python-can==4.6.1
+can-isotp==2.0.7
+udsoncan==1.26.1
+jsonschema==4.26.0
+PyYAML==6.0.3
+
+# Transitive runtime dependencies / 运行时传递依赖
+attrs==26.1.0
+jsonschema-specifications==2025.9.1
+packaging==26.3
+referencing==0.37.0
+rpds-py==2026.6.3
+typing_extensions==4.16.0
+wrapt==1.17.3
+
+# Test/build toolchain / 测试与构建工具链
+PyInstaller==6.22.2
+altgraph==0.17.5
+pefile==2024.8.26
+pyinstaller-hooks-contrib==2026.7
+pywin32-ctypes==0.2.3
+pytest==8.4.2
+pytest-qt==4.5.0
+colorama==0.4.6
+iniconfig==2.3.0
+pluggy==1.6.0
+Pygments==2.21.0

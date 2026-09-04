@@ -26,6 +26,7 @@ dev = [
 
 [project.scripts]
 flashreport = "flashreport_core.cli:main"
+flashreport-gui = "flashreport_gui.app:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

@@ -1,0 +1,28 @@
+# M6-A frozen Qt object names / M6-A 冻结 Qt 对象名
+main_window: mainWindow
+toolbar: toolbar
+buttons:
+  open: openButton
+  analyze: analyzeButton
+  export: exportButton
+  settings: settingsButton
+navigation: conversationTree
+frame_table: frameTable
+finding_list: findingList
+detail_tabs: detailTabs
+detail_tabs_items:
+  frame: frameDetailTab
+  isotp: isotpDetailTab
+  uds: udsDetailTab
+  session: sessionDetailTab
+  evidence: evidenceDetailTab
+status_labels:
+  frame_count: statusFrameCount
+  finding_count: statusFindingCount
+  state: statusState
+  channel: statusChannel
+dynamic:
+  finding_card: findingCard_<finding_id>
+  evidence_item: evidenceItem_<finding_id>_<index>
+  evidence_jump: evidenceJump_<finding_id>_<index>
+  evidence_show: evidenceShow_<finding_id>_<index>

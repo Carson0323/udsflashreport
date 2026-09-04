@@ -1,0 +1,17 @@
+# M6-C interaction contract / M6-C 交互契约
+actions:
+  open:
+    source: openButton
+    result: LOADING
+  analyze:
+    source: analyzeButton
+    result: ANALYZING
+  export:
+    source: exportButton
+    worker: QThreadPool
+  frame_evidence:
+    source: "evidenceJump_<finding_id>_<index>"
+    result: "select frameTable row and open frameDetailTab"
+  window_evidence:
+    source: "evidenceShow_<finding_id>_<index>"
+    result: "select interval and open evidenceDetailTab"

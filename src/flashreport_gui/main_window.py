@@ -6,7 +6,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from time import monotonic
 
-from PySide6.QtCore import QItemSelectionModel, QSettings, QTimer, Qt, Signal, Slot
+from PySide6.QtCore import QItemSelectionModel, QSettings, QSize, QTimer, Qt, Signal, Slot
 from PySide6.QtGui import QCloseEvent
 from PySide6.QtWidgets import (
     QFileDialog,
@@ -38,6 +38,7 @@ from .models import (
     FrameRefRole,
     FrameTableModel,
 )
+from .theme import icon_for
 
 
 class MainWindow(QMainWindow):
@@ -73,6 +74,7 @@ class MainWindow(QMainWindow):
         self.setObjectName("mainWindow")
         self.setWindowTitle("FlashReport / UDS 刷写 Trace 分析")
         self.resize(1440, 900)
+        self.setMinimumSize(1100, 650)
         self._settings = settings or QSettings()
         self._bundle: TraceBundle | None = None
         self._analysis_result: AnalysisResult | None = None
@@ -116,7 +118,15 @@ class MainWindow(QMainWindow):
         self.toolbar = QToolBar("FlashReport / 工具栏", self)
         self.toolbar.setObjectName("toolbar")
         self.toolbar.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
+        self.toolbar.setIconSize(QSize(18, 18))
         self.addToolBar(self.toolbar)
+        self.brandIcon = QLabel(self.toolbar)
+        self.brandIcon.setObjectName("brandIcon")
+        self.brandIcon.setPixmap(icon_for("flashreport").pixmap(20, 20))
+        self.toolbar.addWidget(self.brandIcon)
+        self.brandLabel = QLabel("FlashReport / Trace 分析", self.toolbar)
+        self.brandLabel.setObjectName("brandLabel")
+        self.toolbar.addWidget(self.brandLabel)
         self.openButton = self._toolbar_button("Open / 打开", "openButton")
         self.analyzeButton = self._toolbar_button("Analyze / 分析", "analyzeButton")
         self.exportButton = self._toolbar_button("Export / 导出", "exportButton")
@@ -125,6 +135,14 @@ class MainWindow(QMainWindow):
     def _toolbar_button(self, text: str, object_name: str) -> QPushButton:
         button = QPushButton(text, self.toolbar)
         button.setObjectName(object_name)
+        icon_name = {
+            "openButton": "open",
+            "analyzeButton": "analyze",
+            "exportButton": "export",
+            "settingsButton": "settings",
+        }.get(object_name)
+        if icon_name:
+            button.setIcon(icon_for(icon_name))
         self.toolbar.addWidget(button)
         return button
 
@@ -153,18 +171,31 @@ class MainWindow(QMainWindow):
         main_splitter.setObjectName("mainSplitter")
         main_splitter.setChildrenCollapsible(False)
 
-        self.conversationTree = QTreeView(main_splitter)
+        conversation_panel = QWidget(main_splitter)
+        conversation_panel.setObjectName("conversationPanel")
+        conversation_layout = QVBoxLayout(conversation_panel)
+        conversation_layout.setContentsMargins(0, 0, 0, 0)
+        conversation_layout.setSpacing(4)
+        conversation_heading = QLabel("Conversations / 会话", conversation_panel)
+        conversation_heading.setObjectName("panelHeading")
+        conversation_layout.addWidget(conversation_heading)
+        self.conversationTree = QTreeView(conversation_panel)
         self.conversationTree.setObjectName("conversationTree")
         self.conversationTree.setModel(self.conversationModel)
         self.conversationTree.setHeaderHidden(True)
         self.conversationTree.setUniformRowHeights(True)
         self.conversationTree.setMinimumWidth(190)
+        self.conversationTree.setMaximumWidth(340)
+        conversation_layout.addWidget(self.conversationTree)
 
         frame_panel = QWidget(main_splitter)
         frame_panel.setObjectName("framePanel")
         frame_layout = QVBoxLayout(frame_panel)
         frame_layout.setContentsMargins(0, 0, 0, 0)
         frame_layout.setSpacing(4)
+        frame_heading = QLabel("CAN Frames / CAN 帧", frame_panel)
+        frame_heading.setObjectName("panelHeading")
+        frame_layout.addWidget(frame_heading)
         self.frameTable = QTableView(frame_panel)
         self.frameTable.setObjectName("frameTable")
         self.frameTable.setModel(self.frameProxyModel)
@@ -172,6 +203,7 @@ class MainWindow(QMainWindow):
         self.frameTable.setSelectionMode(QTableView.SelectionMode.ExtendedSelection)
         self.frameTable.setAlternatingRowColors(True)
         self.frameTable.setSortingEnabled(True)
+        self.frameTable.sortByColumn(0, Qt.SortOrder.AscendingOrder)
         self.frameTable.setWordWrap(False)
         self.frameTable.verticalHeader().setVisible(False)
         self.frameTable.horizontalHeader().setStretchLastSection(True)
@@ -192,10 +224,26 @@ class MainWindow(QMainWindow):
         frame_layout.addWidget(self.errorLabel)
         frame_layout.addWidget(self.frameTable)
 
-        self.findingList = QScrollArea(main_splitter)
+        finding_panel = QWidget(main_splitter)
+        finding_panel.setObjectName("findingPanel")
+        finding_panel_layout = QVBoxLayout(finding_panel)
+        finding_panel_layout.setContentsMargins(0, 0, 0, 0)
+        finding_panel_layout.setSpacing(4)
+        finding_heading = QLabel("FINDINGS / 发现", finding_panel)
+        finding_heading.setObjectName("panelHeading")
+        finding_panel_layout.addWidget(finding_heading)
+        self.ambiguousLabel = QLabel("AMBIGUOUS / 需人工复核", finding_panel)
+        self.ambiguousLabel.setObjectName("ambiguousBadge")
+        self.ambiguousLabel.setWordWrap(True)
+        self.ambiguousLabel.setVisible(False)
+        finding_panel_layout.addWidget(self.ambiguousLabel)
+
+        self.findingList = QScrollArea(finding_panel)
         self.findingList.setObjectName("findingList")
         self.findingList.setWidgetResizable(True)
         self.findingList.setMinimumWidth(300)
+        self.findingList.setMaximumWidth(380)
+        finding_panel_layout.addWidget(self.findingList)
         self.findingListWidget = QWidget()
         self.findingListWidget.setObjectName("findingListWidget")
         self.findingListLayout = QVBoxLayout(self.findingListWidget)
@@ -209,6 +257,8 @@ class MainWindow(QMainWindow):
 
         self.detailTabs = QTabWidget(root_splitter)
         self.detailTabs.setObjectName("detailTabs")
+        self.detailTabs.setMinimumHeight(180)
+        self.detailTabs.setMaximumHeight(350)
         self._add_detail_tab("frameDetailTab", "Frame Details / 帧详情", "Select a frame / 请选择一帧")
         self._add_detail_tab("isotpDetailTab", "ISO-TP", "No ISO-TP detail / 暂无 ISO-TP 详情")
         self._add_detail_tab("udsDetailTab", "UDS", "No UDS detail / 暂无 UDS 详情")
@@ -261,6 +311,9 @@ class MainWindow(QMainWindow):
         self._state = state
         has_bundle = self._bundle is not None
         self.statusState.setText(state)
+        self.statusState.setProperty("state", state)
+        self.statusState.style().unpolish(self.statusState)
+        self.statusState.style().polish(self.statusState)
         self.openButton.setEnabled(state not in {"LOADING", "ANALYZING"})
         self.analyzeButton.setEnabled(has_bundle and state in {"READY", "RESULT"})
         self.exportButton.setEnabled(state == "RESULT" and self._analysis_result is not None)
@@ -268,6 +321,8 @@ class MainWindow(QMainWindow):
         self.emptyCenterLabel.setVisible(state in {"EMPTY", "LOADING", "ANALYZING"})
         self.errorLabel.setVisible(state == "ERROR")
         self.frameTable.setVisible(state not in {"EMPTY", "ERROR", "LOADING"})
+        if state != "RESULT":
+            self.ambiguousLabel.setVisible(False)
         return True
 
     def set_bundle(self, bundle: TraceBundle) -> None:
@@ -282,6 +337,7 @@ class MainWindow(QMainWindow):
         self.statusFrameCount.setText(f"Frames / 帧: {len(bundle.frames)}")
         self.statusFindingCount.setText("Findings / 发现: 0")
         self._update_channel_status(bundle)
+        self.ambiguousLabel.setVisible(False)
         self.set_state("READY", force=True)
 
     def set_analysis_result(self, result: AnalysisResult) -> None:
@@ -297,6 +353,8 @@ class MainWindow(QMainWindow):
         self.statusFrameCount.setText(f"Frames / 帧: {len(result.bundle.frames)}")
         self.statusFindingCount.setText(f"Findings / 发现: {len(result.findings)}")
         self._update_channel_status(result.bundle)
+        input_stats = result.report_data.get("input_stats", {}) if isinstance(result.report_data, dict) else {}
+        self.ambiguousLabel.setVisible(bool(input_stats.get("ambiguous")))
         self.set_state("RESULT", force=True)
 
     # ---------- asynchronous interaction / 异步交互 ----------
@@ -453,9 +511,10 @@ class MainWindow(QMainWindow):
 
     def _show_error(self, message: str) -> None:
         self.errorLabel.setText(message)
+        self.ambiguousLabel.setVisible(False)
         self.findingModel.set_findings(())
         self._render_findings(())
-        self.set_state("ERROR")
+        self.set_state("ERROR", force=True)
 
     def _record_heartbeat(self) -> None:
         now = monotonic()
@@ -483,7 +542,7 @@ class MainWindow(QMainWindow):
     def _render_findings(self, findings: Sequence[Finding]) -> None:
         self._clear_finding_cards()
         if not findings:
-            empty = QLabel("No findings / 未发现问题", self.findingListWidget)
+            empty = QLabel("No protocol deviations found / 未发现协议偏差", self.findingListWidget)
             empty.setObjectName("emptyState")
             empty.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
             self.findingListLayout.insertWidget(0, empty)

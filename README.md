@@ -28,8 +28,8 @@ Launch the GUI with `flashreport-gui` (or `python -m flashreport_gui.app`).
 
 ## 项目状态 | Project Status
 
-当前处于 M6-B：PySide6 图形界面交互与异步工作器开发阶段。
-Currently in M6-B: PySide6 GUI interaction and asynchronous worker development.
+当前处于 M6-C：PySide6 图形界面视觉验收与响应式布局开发阶段。
+Currently in M6-C: PySide6 GUI visual acceptance and responsive layout.
 
 M2 已支持 SF/FF/CF/FC 事件化、SN 校验、CF/STmin/BS/WAIT/OVFLW/超时诊断，以及按双向 conversation 进行 Transport Validator 校验。UDS 解码、会话、归因和报告将在后续里程碑完成。
 M2 supports SF/FF/CF/FC eventization, sequence-number checks, CF/STmin/BS/WAIT/OVFLW/timeout diagnostics, and bidirectional conversation validation. UDS decoding, sessions, attribution, and reports are scheduled for later milestones.
@@ -48,6 +48,9 @@ M6-A provides the Qt Widgets main window, conversation tree, raw-frame table, Fi
 
 M6-B 已将 Open/Analyze/Export 接入 QThreadPool，并提供错误状态、逐条 evidence 跳转、缺失区间展示和配置持久化。GUI 主线程只负责控件和 Model 更新。
 M6-B connects Open/Analyze/Export to QThreadPool and provides error states, per-evidence navigation, absence-window display, and configuration persistence. The GUI thread only updates widgets and models.
+
+M6-C 已加入统一浅色 ThemeTokens、SVG 工具栏图标、尺寸/间距约束和多状态截图验收；截图仅用于本机结构审查，不包含私有测试语料。
+M6-C adds centralized light ThemeTokens, SVG toolbar icons, size/spacing constraints, and multi-state screenshot acceptance. Screenshots are for local structural review only and contain no private test corpus.
 
 开发按冻结规格 M0→M7 进行，每个里程碑都必须通过对应的自动化测试 Gate。
 Development follows the frozen M0→M7 specification; each milestone must pass its automated test Gate.

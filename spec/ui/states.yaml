@@ -1,0 +1,14 @@
+# M6-C visible state contract / M6-C 可见状态契约
+states:
+  EMPTY:
+    message: "Open an ASC/BLF trace to begin / 请打开 ASC/BLF Trace 开始分析"
+  LOADING:
+    message: "Loading trace… / 正在加载 Trace…"
+  READY:
+    message: "Trace loaded / Trace 已加载"
+  ANALYZING:
+    message: "Analyzing… / 正在分析…"
+  RESULT:
+    message: "Analysis completed / 分析完成"
+  ERROR:
+    message: "Error / 错误"

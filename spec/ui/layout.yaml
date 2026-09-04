@@ -1,0 +1,14 @@
+# M6-C layout tokens / M6-C 布局约束
+window:
+  initial_size: [1440, 900]
+  minimum_size: [1100, 650]
+  supported_review_sizes: [[1920, 1080], [1366, 768]]
+toolbar:
+  height: [34, 44]
+panels:
+  conversation_min_width: 180
+  findings_width: [260, 380]
+  detail_height: [180, 350]
+table:
+  row_height: [24, 28]
+  columns: ["#", Time, "Δt", Channel, "CAN ID", Direction, DLC, Data, "ISO-TP", UDS, Summary]

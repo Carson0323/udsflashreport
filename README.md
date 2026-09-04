@@ -52,8 +52,8 @@ M6-B connects Open/Analyze/Export to QThreadPool and provides error states, per-
 M6-C 已加入统一浅色 ThemeTokens、SVG 工具栏图标、尺寸/间距约束和多状态截图验收；截图仅用于本机结构审查，不包含私有测试语料。
 M6-C adds centralized light ThemeTokens, SVG toolbar icons, size/spacing constraints, and multi-state screenshot acceptance. Screenshots are for local structural review only and contain no private test corpus.
 
-M7 已加入 requirements.lock、部署预检、PyInstaller onedir 构建 benchmark，以及仅本机运行的私有语料错误注入/回归工具；在人工审核完成前不会创建 GitHub Release。
-M7 adds requirements.lock, deployment preflight, a PyInstaller onedir build benchmark, and local-only private-corpus fault-injection/regression tools. No GitHub Release will be created before human review is complete.
+M7 已加入 requirements.lock、部署预检、带 Qt DLL 运行时路径保护的 PyInstaller onedir 构建 benchmark，以及仅本机运行的私有语料错误注入/回归工具；在人工审核完成前不会创建 GitHub Release。
+M7 adds requirements.lock, deployment preflight, a PyInstaller onedir build benchmark with Qt DLL runtime-path protection, and local-only private-corpus fault-injection/regression tools. No GitHub Release will be created before human review is complete.
 
 开发按冻结规格 M0→M7 进行，每个里程碑都必须通过对应的自动化测试 Gate。
 Development follows the frozen M0→M7 specification; each milestone must pass its automated test Gate.

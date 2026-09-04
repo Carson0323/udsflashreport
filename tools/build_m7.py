@@ -16,7 +16,12 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def _run(command: list[str], *, timeout: int = 900) -> dict[str, Any]:
+def _run(
+    command: list[str],
+    *,
+    timeout: int = 900,
+    env: dict[str, str] | None = None,
+) -> dict[str, Any]:
     started = time.perf_counter()
     completed = subprocess.run(
         command,
@@ -27,6 +32,7 @@ def _run(command: list[str], *, timeout: int = 900) -> dict[str, Any]:
         errors="replace",
         timeout=timeout,
         check=False,
+        env=env,
     )
     return {
         "returncode": completed.returncode,
@@ -41,25 +47,50 @@ def _directory_stats(path: Path) -> tuple[int, int]:
     return len(files), sum(item.stat().st_size for item in files)
 
 
-def _smoke(executable: Path, seconds: float = 5.0) -> dict[str, Any]:
+def _packaging_environment() -> dict[str, str]:
+    """Keep unrelated native runtimes from being mistaken for Qt dependencies."""
     env = os.environ.copy()
+    path_entries = env.get("PATH", "").split(os.pathsep)
+    env["PATH"] = os.pathsep.join(
+        entry for entry in path_entries if "poppler" not in entry.casefold()
+    )
+    return env
+
+
+def _smoke(executable: Path, seconds: float = 5.0) -> dict[str, Any]:
+    env = _packaging_environment()
     env["QT_QPA_PLATFORM"] = "offscreen"
+    env["FLASHREPORT_SMOKE_MS"] = str(max(1000, int(seconds * 1000)))
     started = time.perf_counter()
-    process = subprocess.Popen([str(executable)], cwd=executable.parent, env=env)
-    time.sleep(seconds)
-    alive = process.poll() is None
-    if alive:
+    process = subprocess.Popen(
+        [str(executable)],
+        cwd=executable.parent,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    timed_out = False
+    try:
+        process.wait(timeout=seconds + 10)
+    except subprocess.TimeoutExpired:
+        timed_out = True
         process.terminate()
         try:
             process.wait(timeout=10)
         except subprocess.TimeoutExpired:
             process.kill()
             process.wait(timeout=10)
+    stdout, stderr = process.communicate()
     return {
-        "status": "SUCCESS" if alive else "FAILED",
+        "status": "SUCCESS" if not timed_out and process.returncode == 0 else "FAILED",
         "startup_ms": round((time.perf_counter() - started) * 1000, 2),
-        "alive_after_window": alive,
+        "alive_after_window": timed_out,
         "returncode": process.returncode,
+        "stdout_tail": stdout[-2000:],
+        "stderr_tail": stderr[-4000:],
     }
 
 
@@ -92,9 +123,11 @@ def build(output_path: Path) -> dict[str, Any]:
         str(dist_path),
         "--specpath",
         str(spec_path),
+        "--runtime-hook",
+        str(ROOT / "tools" / "pyinstaller_runtime_hook.py"),
         str(ROOT / "tools" / "packaging_gui_entry.py"),
     ]
-    build_result = _run(command)
+    build_result = _run(command, env=_packaging_environment())
     executable = dist_path / "FlashReport" / "FlashReport.exe"
     package_files = package_bytes = 0
     if executable.is_file():

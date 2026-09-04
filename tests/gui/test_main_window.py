@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import QSettings, Qt
-from PySide6.QtWidgets import QLabel, QFrame, QPushButton, QScrollArea, QTableView, QTabWidget, QTreeView
+from PySide6.QtWidgets import QLabel, QFrame, QPushButton, QScrollArea, QTableView, QTableWidget, QTabWidget, QTreeView
 
 from flashreport_core.models import (
     AnalysisResult,
@@ -225,3 +225,39 @@ def test_selecting_a_frame_populates_all_detail_tabs(qtbot, tmp_path) -> None:
     assert "SF len=2" in window.findChild(QLabel, "isotpDetailTabText").text()
     assert "DiagnosticSessionControl" in window.findChild(QLabel, "udsDetailTabText").text()
     assert "programming" in window.findChild(QLabel, "sessionDetailTabText").text()
+
+
+def test_workflow_is_rendered_as_ordered_step_table(qtbot, tmp_path) -> None:
+    settings = QSettings(str(tmp_path / "workflow.ini"), QSettings.Format.IniFormat)
+    window = MainWindow(settings=settings)
+    qtbot.addWidget(window)
+    bundle = _bundle()
+    result = AnalysisResult(
+        bundle=bundle,
+        findings=[],
+        first_deviation=None,
+        report_data={},
+        frame_annotations=bundle.frame_annotations,
+        conversation_summaries=bundle.conversation_summaries,
+        workflow_steps=[
+            {
+                "step_index": 1,
+                "ts_start": 1.0,
+                "addressing": "physical",
+                "sid": 0x34,
+                "service_name": "RequestDownload",
+                "status_key": "positive",
+                "fields": {"start_address": 0x1000, "transfer_length": 0x400},
+                "evidence_frame_refs": ("synthetic:1", "synthetic:2"),
+            }
+        ],
+    )
+    window.set_analysis_result(result)
+
+    table = window.findChild(QTableWidget, "workflowDetailTable")
+    assert table is not None
+    assert table.rowCount() == 1
+    assert table.item(0, 0).text() == "1"
+    assert "RequestDownload" in table.item(0, 3).text()
+    assert "0x1000" in table.item(0, 4).text()
+    assert "synthetic:1" in table.item(0, 6).text()

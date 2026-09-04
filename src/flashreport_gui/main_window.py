@@ -26,7 +26,8 @@ from PySide6.QtWidgets import (
     QSplitter,
     QTabWidget,
     QTableView,
-    QTextEdit,
+    QTableWidget,
+    QTableWidgetItem,
     QToolBar,
     QTreeView,
     QVBoxLayout,
@@ -50,6 +51,9 @@ from .models import (
 )
 from .i18n import LANGUAGE_CODES, LANGUAGE_LABELS, tr
 from .theme import DARK_TOKENS, LIGHT_TOKENS, apply_theme, icon_for
+
+
+WORKFLOW_COLUMNS = ("Step", "Time", "Addressing", "Service", "Description", "Status", "Evidence")
 
 
 class MainWindow(QMainWindow):
@@ -269,6 +273,7 @@ class MainWindow(QMainWindow):
         if self._analysis_result is None:
             self.findingSummaryLabel.setText(self._t("finding_count", count=0))
             self._set_default_detail_texts()
+            self._render_workflow()
         else:
             self._render_findings(self._analysis_result.findings)
             self._update_analysis_assessment(self._analysis_result)
@@ -347,6 +352,43 @@ class MainWindow(QMainWindow):
     def _workflow_addressing(self, value: str) -> str:
         return self._t("functional_addressing") if value == "functional" else self._t("physical")
 
+    def _workflow_description(self, step: dict) -> str:
+        """Render protocol fields as a compact, language-aware step description."""
+
+        sid = step.get("sid")
+        fields = step.get("fields") or {}
+        response_fields = step.get("response_fields") or {}
+        if sid is None:
+            return str(step.get("detail", "—"))
+        parts = [f"0x{int(sid):02X} {step.get('service_name') or 'unknown'}"]
+        if step.get("subfunction") is not None:
+            parts.append(self._t("subfunction", value=f"0x{int(step['subfunction']):02X}"))
+        if step.get("did") is not None:
+            parts.append(self._t("did", value=f"0x{int(step['did']):04X}"))
+        if sid == 0x34:
+            if fields.get("start_address") is not None:
+                parts.append(self._t("start_address", value=f"0x{int(fields['start_address']):X}"))
+            if fields.get("transfer_length") is not None:
+                parts.append(self._t("transfer_length", value=f"0x{int(fields['transfer_length']):X}"))
+        elif sid == 0x36:
+            if step.get("block_seq") is not None:
+                parts.append(self._t("bsc", value=f"0x{int(step['block_seq']):02X}"))
+            parts.append(
+                self._t(
+                    "transfer_bytes",
+                    value=fields.get("transfer_data_length", 0),
+                )
+            )
+        elif sid == 0x31:
+            if fields.get("routine_id") is not None:
+                parts.append(self._t("routine_id", value=f"0x{int(fields['routine_id']):04X}"))
+            parts.append(self._t("parameters", value=fields.get("routine_parameters") or "—"))
+        elif sid == 0x2E and fields.get("write_data") is not None:
+            parts.append(self._t("write_data", value=fields.get("write_data") or "—"))
+        elif sid == 0x22 and response_fields.get("read_data") is not None:
+            parts.append(self._t("read_data", value=response_fields.get("read_data") or "—"))
+        return " · ".join(parts)
+
     def _collapse_transfer_steps(self, steps: Sequence[dict]) -> list[dict]:
         collapsed: list[dict] = []
         transfer_group: list[dict] = []
@@ -364,6 +406,7 @@ class MainWindow(QMainWindow):
             collapsed.append(
                 {
                     **first,
+                    "step_label": f"{first.get('step_index', '?')}–{last.get('step_index', '?')}",
                     "ts_end": last.get("ts_end", first.get("ts_start", 0.0)),
                     "status_key": "negative"
                     if any(item.get("status_key") == "negative" for item in transfer_group)
@@ -395,31 +438,42 @@ class MainWindow(QMainWindow):
 
     @Slot(int)
     def _render_workflow(self, _state: int | None = None) -> None:
-        if not hasattr(self, "workflowDetailText"):
+        if not hasattr(self, "workflowDetailTable"):
             return
         steps = self._workflow_steps
         if not steps:
-            self.workflowDetailText.setPlainText(self._t("workflow_empty"))
+            self.workflowDetailTable.setRowCount(0)
+            self.workflowDetailTable.setVisible(False)
+            self.workflowEmptyLabel.setText(self._t("workflow_empty"))
+            self.workflowEmptyLabel.setVisible(True)
             return
         displayed = steps if self.workflowExpandedCheck.isChecked() else self._collapse_transfer_steps(steps)
-        lines: list[str] = []
-        for step in displayed:
+        self.workflowEmptyLabel.setVisible(False)
+        self.workflowDetailTable.setVisible(True)
+        self.workflowDetailTable.setRowCount(len(displayed))
+        for row, step in enumerate(displayed):
+            step_label = step.get("step_label", step.get("step_index", 0))
             status = self._workflow_status(str(step.get("status_key", "")))
             addressing = self._workflow_addressing(str(step.get("addressing", "physical")))
-            lines.append(
-                self._t(
-                    "workflow_step",
-                    index=step.get("step_index", 0),
-                    time=float(step.get("ts_start", 0.0)),
-                    addressing=addressing,
-                    status=status,
-                )
+            service = (
+                f"0x{int(step['sid']):02X} {step.get('service_name') or 'unknown'}"
+                if step.get("sid") is not None
+                else "—"
             )
-            lines.append(f"  {step.get('detail', '')}")
-            refs = ", ".join(str(ref) for ref in step.get("evidence_frame_refs", ()))
-            if refs:
-                lines.append(f"  {self._t('frame', value=refs)}")
-        self.workflowDetailText.setPlainText("\n".join(lines))
+            refs = ", ".join(str(ref) for ref in step.get("evidence_frame_refs", ())) or "—"
+            values = (
+                str(step_label),
+                f"{float(step.get('ts_start', 0.0)):.6f}",
+                addressing,
+                service,
+                self._workflow_description(step),
+                status,
+                refs,
+            )
+            for column, value in enumerate(values):
+                item = QTableWidgetItem(value)
+                self.workflowDetailTable.setItem(row, column, item)
+            self.workflowDetailTable.resizeRowToContents(row)
 
     @Slot()
     def _toggle_theme(self) -> None:
@@ -594,11 +648,31 @@ class MainWindow(QMainWindow):
         self.workflowExpandedCheck = QCheckBox(workflow_tab)
         self.workflowExpandedCheck.setObjectName("workflowExpandedCheck")
         workflow_layout.addWidget(self.workflowExpandedCheck)
-        self.workflowDetailText = QTextEdit(workflow_tab)
-        self.workflowDetailText.setObjectName("workflowDetailTabText")
-        self.workflowDetailText.setReadOnly(True)
-        self.workflowDetailText.setLineWrapMode(QTextEdit.LineWrapMode.NoWrap)
-        workflow_layout.addWidget(self.workflowDetailText)
+        self.workflowEmptyLabel = QLabel(workflow_tab)
+        self.workflowEmptyLabel.setObjectName("workflowEmptyLabel")
+        self.workflowEmptyLabel.setWordWrap(True)
+        self.workflowEmptyLabel.setVisible(False)
+        workflow_layout.addWidget(self.workflowEmptyLabel)
+        self.workflowDetailTable = QTableWidget(workflow_tab)
+        self.workflowDetailTable.setObjectName("workflowDetailTable")
+        self.workflowDetailTable.setColumnCount(len(WORKFLOW_COLUMNS))
+        self.workflowDetailTable.setHorizontalHeaderLabels(WORKFLOW_COLUMNS)
+        self.workflowDetailTable.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self.workflowDetailTable.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.workflowDetailTable.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
+        self.workflowDetailTable.setWordWrap(True)
+        self.workflowDetailTable.setAlternatingRowColors(True)
+        self.workflowDetailTable.verticalHeader().setVisible(False)
+        workflow_header = self.workflowDetailTable.horizontalHeader()
+        workflow_header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        workflow_header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        workflow_header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        workflow_header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        workflow_header.setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
+        workflow_header.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
+        workflow_header.setSectionResizeMode(6, QHeaderView.ResizeMode.Stretch)
+        self.workflowDetailTable.setSortingEnabled(False)
+        workflow_layout.addWidget(self.workflowDetailTable)
         self.workflowExpandedCheck.stateChanged.connect(self._render_workflow)
         self.detailTabs.addTab(workflow_tab, "")
         root_splitter.setSizes([620, 240])
@@ -785,6 +859,7 @@ class MainWindow(QMainWindow):
         self.conversationModel.set_summaries(bundle.conversation_summaries)
         self.findingModel.set_findings(())
         self._render_findings(())
+        self._render_workflow()
         self.statusFrameCount.setText(tr("frames_status", self._language, count=len(bundle.frames)))
         self.statusFindingCount.setText(tr("findings_status", self._language, count=0))
         self._update_channel_status(bundle)
@@ -837,6 +912,7 @@ class MainWindow(QMainWindow):
         self.conversationModel.set_summaries(())
         self.findingModel.set_findings(())
         self._render_findings(())
+        self._render_workflow()
         self.set_state("LOADING", force=True)
         self.analysisController.load_file(str(path), selected_config)
         return True
@@ -966,10 +1042,12 @@ class MainWindow(QMainWindow):
 
     def _show_error(self, message: str) -> None:
         self._last_error_message = message
+        self._workflow_steps = []
         self.errorLabel.setText(message)
         self.ambiguousLabel.setVisible(False)
         self.findingModel.set_findings(())
         self._render_findings(())
+        self._render_workflow()
         self.set_state("ERROR", force=True)
 
     def _record_heartbeat(self) -> None:

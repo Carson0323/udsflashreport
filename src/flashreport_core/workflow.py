@@ -151,6 +151,7 @@ def _transaction_step(transaction: UdsTransaction, index: int, pair_key: str) ->
         "status_key": status_key,
         "request_raw": _message_detail(request)["raw"],
         "response_raw": _message_detail(response)["raw"] if response is not None else None,
+        "response_fields": _message_detail(response) if response is not None else {},
         "detail": _step_detail(request, response),
         "fields": _message_detail(request),
         "evidence_frame_refs": _frame_refs(transaction),

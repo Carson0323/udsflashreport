@@ -298,7 +298,15 @@ class MainWindow(QMainWindow):
         if unsupported_count:
             reasons.append(self._t("unsupported_reason", count=unsupported_count))
         if completeness not in {"verified", "assumed"}:
-            reasons.append(self._t("coverage_reason", value=completeness))
+            completeness_display = (
+                {
+                    "unknown": "无法确认",
+                    "known_incomplete": "已知不完整",
+                }.get(completeness, completeness)
+                if self._language == "zh"
+                else completeness
+            )
+            reasons.append(self._t("coverage_reason", value=completeness_display))
         if any(finding.needs_normative_confirmation for finding in result.findings):
             reasons.append(self._t("manual_review"))
         if any(

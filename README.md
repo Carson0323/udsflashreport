@@ -25,8 +25,11 @@ The GUI is a thin viewer over the core analysis engine; it does not perform live
 
 ## 项目状态 | Project Status
 
-当前处于 M1：数据层与寻址开发阶段。
-Currently in M1: data layer and addressing implementation.
+当前处于 M2：ISO-TP 事件化、PDU 重建与传输校验开发阶段。
+Currently in M2: ISO-TP eventization, PDU reconstruction, and transport validation.
+
+M2 已支持 SF/FF/CF/FC 事件化、SN 校验、CF/STmin/BS/WAIT/OVFLW/超时诊断，以及按双向 conversation 进行 Transport Validator 校验。UDS 解码、会话、归因和报告将在后续里程碑完成。
+M2 supports SF/FF/CF/FC eventization, sequence-number checks, CF/STmin/BS/WAIT/OVFLW/timeout diagnostics, and bidirectional conversation validation. UDS decoding, sessions, attribution, and reports are scheduled for later milestones.
 
 开发按冻结规格 M0→M7 进行，每个里程碑都必须通过对应的自动化测试 Gate。
 Development follows the frozen M0→M7 specification; each milestone must pass its automated test Gate.

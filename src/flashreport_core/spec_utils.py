@@ -2,11 +2,42 @@ from __future__ import annotations
 
 """Small, deterministic loaders for the repository's executable spec files."""
 
+import sys
 from pathlib import Path
 from typing import Any
 
 
-_DEFAULT_FINDINGS_PATH = Path(__file__).resolve().parents[2] / "spec" / "findings.yaml"
+def _runtime_roots() -> tuple[Path, ...]:
+    """Return source and frozen-package roots in deterministic lookup order."""
+
+    source_root = Path(__file__).resolve().parents[2]
+    roots: list[Path] = []
+    if getattr(sys, "frozen", False):
+        meipass = getattr(sys, "_MEIPASS", None)
+        if meipass:
+            meipass_root = Path(meipass)
+            roots.extend((meipass_root, meipass_root / "_internal"))
+        executable_root = Path(sys.executable).resolve().parent
+        roots.extend((executable_root / "_internal", executable_root))
+    roots.append(source_root)
+
+    unique: list[Path] = []
+    for root in roots:
+        resolved = root.resolve()
+        if resolved not in unique:
+            unique.append(resolved)
+    return tuple(unique)
+
+
+def resolve_runtime_resource(relative_path: str | Path) -> Path:
+    """Resolve a public repository resource in source or a frozen package."""
+
+    relative = Path(relative_path)
+    for root in _runtime_roots():
+        candidate = root / relative
+        if candidate.is_file():
+            return candidate
+    return _runtime_roots()[-1] / relative
 
 
 def _split_inline_items(value: str) -> list[str]:
@@ -94,7 +125,7 @@ def load_findings_yaml(path: str | Path | None = None) -> dict[str, Any]:
     rejecting malformed or unsupported registry entries.
     """
 
-    registry_path = Path(path) if path is not None else _DEFAULT_FINDINGS_PATH
+    registry_path = Path(path) if path is not None else resolve_runtime_resource("spec/findings.yaml")
     if not registry_path.is_file():
         raise FileNotFoundError(registry_path)
     try:
@@ -167,4 +198,9 @@ def load_findings_yaml_from_data(data: dict[str, Any]) -> dict[str, Any]:
     return data
 
 
-__all__ = ["load_findings_yaml", "load_findings_yaml_from_data", "validate_findings_registry"]
+__all__ = [
+    "load_findings_yaml",
+    "load_findings_yaml_from_data",
+    "resolve_runtime_resource",
+    "validate_findings_registry",
+]

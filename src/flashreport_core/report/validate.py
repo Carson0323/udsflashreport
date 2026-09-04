@@ -7,9 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from ..models import ConfigValidationResult
-
-
-_DEFAULT_SCHEMA = Path(__file__).resolve().parents[3] / "spec" / "report.schema.json"
+from ..spec_utils import resolve_runtime_resource
 
 
 def _basic_validate(report: Any) -> list[str]:
@@ -72,7 +70,11 @@ def validate_report(
     errors = _basic_validate(report)
     if errors:
         return ConfigValidationResult(ok=False, errors=errors)
-    path = Path(schema_path) if schema_path is not None else _DEFAULT_SCHEMA
+    path = (
+        Path(schema_path)
+        if schema_path is not None
+        else resolve_runtime_resource("spec/report.schema.json")
+    )
     try:
         schema = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:

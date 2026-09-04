@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 
+import flashreport_core.spec_utils as spec_utils
 from flashreport_core.rules.registry import (
     RULE_EVALUATORS,
     load_rule_specs,
@@ -44,3 +45,13 @@ findings:
 
     with pytest.raises(ValueError, match="unknown evaluator"):
         load_rule_specs(path)
+
+
+def test_runtime_resource_resolves_frozen_package_root(tmp_path, monkeypatch) -> None:
+    packaged_spec = tmp_path / "spec" / "findings.yaml"
+    packaged_spec.parent.mkdir()
+    packaged_spec.write_text("findings: []\n", encoding="utf-8")
+    monkeypatch.setattr(spec_utils.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(spec_utils.sys, "_MEIPASS", str(tmp_path), raising=False)
+
+    assert spec_utils.resolve_runtime_resource("spec/findings.yaml") == packaged_spec

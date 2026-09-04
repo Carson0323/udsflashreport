@@ -61,6 +61,7 @@ def _smoke(executable: Path, seconds: float = 5.0) -> dict[str, Any]:
     env = _packaging_environment()
     env["QT_QPA_PLATFORM"] = "offscreen"
     env["FLASHREPORT_SMOKE_MS"] = str(max(1000, int(seconds * 1000)))
+    env["FLASHREPORT_SMOKE_ANALYSIS_FILE"] = str(ROOT / "samples" / "success_full_download.asc")
     started = time.perf_counter()
     process = subprocess.Popen(
         [str(executable)],
@@ -117,6 +118,10 @@ def build(output_path: Path) -> dict[str, Any]:
         str(ROOT / "src"),
         "--add-data",
         f"{assets};flashreport_gui/assets",
+        "--add-data",
+        f"{ROOT / 'spec' / 'findings.yaml'};spec",
+        "--add-data",
+        f"{ROOT / 'spec' / 'report.schema.json'};spec",
         "--workpath",
         str(work_path),
         "--distpath",

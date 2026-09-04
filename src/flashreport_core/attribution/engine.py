@@ -27,6 +27,7 @@ from ..uds.pending import PendingIssue, check_pending
 from ..uds.transaction_matcher import match_conversation
 from ..rules.context import RuleContext, session_at
 from ..rules.registry import RULE_EVALUATORS, RuleSpec, load_rule_specs
+from ..workflow import build_workflow_steps
 
 
 TRANSPORT_FINDING_IDS = {
@@ -172,6 +173,7 @@ def _enabled(cfg: AppConfig, finding_id: str) -> bool:
         "ISO-TP-004": "iso_tp_004",
         "ISO-TP-005": "iso_tp_005",
         "UDS-001": "uds_001",
+        "UDS-002": "uds_002",
         "FLASH-001": "flash_001",
     }[finding_id]
     return bool(getattr(cfg.rules, field_name))
@@ -246,14 +248,32 @@ def _run_uds_rule(
     ambiguous: bool,
     quality,
 ) -> list[Finding]:
-    if not _enabled(cfg, "UDS-001"):
+    if not (_enabled(cfg, "UDS-001") or _enabled(cfg, "UDS-002")):
         return []
-    spec = specs["UDS-001"]
-    evaluator = RULE_EVALUATORS[spec.evaluator]
     findings: list[Finding] = []
     for index, transaction in enumerate(transactions):
         request_ts = _request_ts(transaction, float(index))
         timing = resolve_timing(cfg, _server_timing_before(conversation, request_ts))
+        context = RuleContext(
+            conversation=conversation,
+            quality=quality,
+            trace_end_ts=quality.end_ts,
+            timing=timing,
+            transactions=transactions,
+            sessions=sessions,
+            transaction=transaction,
+            ambiguous=ambiguous or transaction.ambiguous,
+            session_name=session_at(sessions, request_ts),
+        )
+        if _enabled(cfg, "UDS-002") and transaction.final_response is not None:
+            negative_spec = specs["UDS-002"]
+            negative = RULE_EVALUATORS[negative_spec.evaluator](None, context)
+            if negative is not None and _evidence_contract_ok(negative, negative_spec):
+                findings.append(negative)
+        if not _enabled(cfg, "UDS-001"):
+            continue
+        spec = specs["UDS-001"]
+        evaluator = RULE_EVALUATORS[spec.evaluator]
         issue, pending_timestamps, request_ts = _transaction_pending_issue(
             conversation,
             transaction,
@@ -263,7 +283,7 @@ def _run_uds_rule(
         )
         if issue is None:
             continue
-        context = RuleContext(
+        pending_context = RuleContext(
             conversation=conversation,
             quality=quality,
             trace_end_ts=quality.end_ts,
@@ -276,9 +296,34 @@ def _run_uds_rule(
             ambiguous=ambiguous or transaction.ambiguous,
             session_name=session_at(sessions, request_ts),
         )
-        finding = evaluator(issue, context)
+        finding = evaluator(issue, pending_context)
         if finding is not None and _evidence_contract_ok(finding, spec):
             findings.append(finding)
+    if _enabled(cfg, "UDS-002"):
+        negative_spec = specs["UDS-002"]
+        negative_evaluator = RULE_EVALUATORS[negative_spec.evaluator]
+        for transaction in _orphan_negative_transactions(conversation, transactions):
+            request_ts = _request_ts(transaction, 0.0)
+            context = RuleContext(
+                conversation=conversation,
+                quality=quality,
+                trace_end_ts=quality.end_ts,
+                timing=resolve_timing(cfg, _server_timing_before(conversation, request_ts)),
+                transactions=transactions,
+                sessions=sessions,
+                transaction=transaction,
+                ambiguous=True,
+                session_name=session_at(sessions, request_ts),
+            )
+            finding = negative_evaluator(None, context)
+            if finding is not None:
+                finding.detail["match_status"] = "orphan_negative_response"
+                finding.detail["review_note"] = (
+                    "The ECU NRC was captured without an outstanding request; "
+                    "the nearest preceding request for the referenced SID was used."
+                )
+            if finding is not None and _evidence_contract_ok(finding, negative_spec):
+                findings.append(finding)
     return findings
 
 
@@ -377,11 +422,66 @@ def _uds_summary(pdu: IsoTpPdu) -> str:
     return summary
 
 
-def _annotate_uds(bundle: TraceBundle) -> dict[str, FrameAnnotation]:
+def _message_details(message) -> dict[str, object]:
+    details = {
+        "sid": message.sid,
+        "service_name": message.service_name,
+        "subfunction": message.subfunction,
+        "did": message.did,
+        "block_seq": message.block_seq,
+        "max_block_length": message.max_block_length,
+        "is_positive": message.is_positive,
+        "nrc": message.nrc,
+        "nrc_name": message.nrc_text,
+        "pending": message.pending,
+        "raw": message.raw.hex().upper(),
+    }
+    raw = bytes(message.raw)
+    if message.sid == 0x34 and len(raw) >= 3:
+        address_size = (raw[2] >> 4) & 0x0F
+        length_size = raw[2] & 0x0F
+        length_start = 3 + address_size
+        if address_size and length_size and len(raw) >= length_start + length_size:
+            details["start_address"] = int.from_bytes(raw[3:length_start], "big")
+            details["transfer_length"] = int.from_bytes(
+                raw[length_start : length_start + length_size], "big"
+            )
+    if message.sid == 0x31 and len(raw) >= 4:
+        details["routine_id"] = int.from_bytes(raw[2:4], "big")
+        details["routine_parameters"] = raw[4:].hex().upper()
+    if message.sid in {0x2E, 0x6E} and len(raw) >= 3:
+        details["write_data"] = raw[3:].hex().upper()
+    if message.sid in {0x22, 0x62} and len(raw) >= 3:
+        details["read_data"] = raw[3:].hex().upper()
+    return details
+
+
+def _functional_payload(data: bytes) -> bytes | None:
+    if not data:
+        return None
+    pci_type = data[0] >> 4
+    if pci_type == 0x0:
+        length = data[0] & 0x0F
+        return data[1 : 1 + length] if length and len(data) >= length + 1 else None
+    if pci_type == 0x1 and len(data) >= 3:
+        return data[2:]
+    return None
+
+
+def _annotate_uds(bundle: TraceBundle, cfg: AppConfig) -> dict[str, FrameAnnotation]:
     annotations = dict(bundle.frame_annotations)
     for conversation in bundle.conversations:
+        match = match_conversation(
+            conversation,
+            timing=cfg.timeouts,
+            trace_end_ts=bundle.quality.end_ts,
+        )
+        sessions = reconstruct_sessions(match.transactions)
         for pdu in conversation.pdus:
+            message = decode_uds(pdu)
             summary = _uds_summary(pdu)
+            details = _message_details(message)
+            session = session_at(sessions, pdu.ts_start)
             for frame in pdu.frames:
                 previous = annotations.get(frame.frame_ref)
                 if previous is None:
@@ -395,8 +495,100 @@ def _annotate_uds(bundle: TraceBundle) -> dict[str, FrameAnnotation]:
                     isotp_summary=previous.isotp_summary,
                     uds_summary=summary,
                     summary=combined or previous.summary,
+                    addressing_mode=previous.addressing_mode,
+                    uds_details={**previous.uds_details, **details, "session": session},
                 )
+    for frame in bundle.frames:
+        previous = annotations.get(frame.frame_ref)
+        if previous is None or previous.addressing_mode != "functional":
+            continue
+        payload = _functional_payload(frame.data)
+        if payload is None:
+            continue
+        message = decode_uds(payload)
+        if message.sid is None:
+            continue
+        annotations[frame.frame_ref] = FrameAnnotation(
+            frame_ref=previous.frame_ref,
+            direction=previous.direction,
+            isotp_summary=previous.isotp_summary,
+            uds_summary=_uds_summary_from_message(message),
+            summary=" | ".join(
+                value for value in (previous.isotp_summary, _uds_summary_from_message(message)) if value
+            ),
+            addressing_mode=previous.addressing_mode,
+            uds_details={**previous.uds_details, **_message_details(message)},
+        )
     return annotations
+
+
+def _uds_summary_from_message(message) -> str:
+    if message.sid is None:
+        return "UDS malformed/empty"
+    summary = f"0x{message.sid:02X} {message.service_name or 'unknown'}"
+    if message.block_seq is not None:
+        summary += f" BSC={message.block_seq}"
+    if message.nrc is not None:
+        summary += f" NRC=0x{message.nrc:02X}"
+    if message.pending:
+        summary += " pending"
+    return summary
+
+
+def _orphan_negative_transactions(
+    conversation: IsoTpConversation,
+    transactions: list[UdsTransaction],
+) -> list[UdsTransaction]:
+    """Retain a locatable Finding when a capture contains an unpaired NRC.
+
+    Some injected and real captures contain an ECU negative response after the
+    request has already been closed by a positive response.  The matcher
+    correctly marks that response as unpaired; for reporting, associate it with
+    the nearest preceding request for the service named in byte 2 of 0x7F.
+    The transaction is marked ambiguous so the UI communicates that this is a
+    reviewable association rather than a silent certainty.
+    """
+
+    attached_response_refs = {
+        frame.frame_ref
+        for transaction in transactions
+        if transaction.pdu_resp is not None
+        for frame in transaction.pdu_resp.frames
+    }
+    requests = [
+        (pdu, decode_uds(pdu))
+        for pdu in conversation.pdus
+        if pdu.direction == "tester->ecu" and decode_uds(pdu).sid is not None
+    ]
+    orphaned: list[UdsTransaction] = []
+    for response_pdu in conversation.pdus:
+        if response_pdu.direction != "ecu->tester":
+            continue
+        if any(frame.frame_ref in attached_response_refs for frame in response_pdu.frames):
+            continue
+        response = decode_uds(response_pdu)
+        if response.sid != 0x7F or len(response.raw) < 2:
+            continue
+        target_sid = response.raw[1]
+        preceding = [
+            (pdu, message)
+            for pdu, message in requests
+            if pdu.ts_start <= response_pdu.ts_start and message.sid == target_sid
+        ]
+        if not preceding:
+            continue
+        request_pdu, request = preceding[-1]
+        orphaned.append(
+            UdsTransaction(
+                request=request,
+                pending_events=[],
+                final_response=response,
+                pdu_req=request_pdu,
+                pdu_resp=response_pdu,
+                ambiguous=True,
+            )
+        )
+    return orphaned
 
 
 def analyze_bundle(
@@ -463,6 +655,7 @@ def analyze_bundle(
     )
     findings.sort(key=lambda finding: (finding.deviation_ts, finding.detected_ts, finding.finding_id))
     _mark_superseded(findings)
+    workflow_steps = build_workflow_steps(bundle, cfg)
     first_deviation = next(
         (
             finding
@@ -508,13 +701,15 @@ def analyze_bundle(
             "finding_count": len(findings),
             "first_deviation_id": first_deviation.finding_id if first_deviation else None,
         },
+        "workflow": _json_value(workflow_steps),
     }
     return AnalysisResult(
         bundle=bundle,
         findings=findings,
         first_deviation=first_deviation,
         report_data=report_data,
-        frame_annotations=_annotate_uds(bundle),
+        frame_annotations=_annotate_uds(bundle, cfg),
+        workflow_steps=workflow_steps,
         conversation_summaries=bundle.conversation_summaries,
     )
 

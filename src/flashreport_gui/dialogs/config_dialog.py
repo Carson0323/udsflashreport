@@ -24,6 +24,8 @@ from PySide6.QtWidgets import (
 import flashreport_core.api as api
 from flashreport_core.models import AppConfig
 
+from ..i18n import LANGUAGE_CODES, tr
+
 
 def load_persisted_config(settings: QSettings) -> AppConfig:
     """Read the isolated QSettings config through the public API."""
@@ -48,11 +50,13 @@ class ConfigDialog(QDialog):
         self,
         config: AppConfig | None = None,
         settings: QSettings | None = None,
+        language: str = "zh",
         parent: QDialog | None = None,
     ) -> None:
         super().__init__(parent)
         self.setObjectName("configDialog")
-        self.setWindowTitle("Settings / 设置")
+        self._language = language if language in LANGUAGE_CODES else "zh"
+        self.setWindowTitle(tr("settings_dialog", self._language))
         self.setModal(True)
         self._settings = settings or QSettings()
         self._config = config if config is not None else self._load_stored_config()
@@ -75,35 +79,35 @@ class ConfigDialog(QDialog):
 
         self.testerSaEdit = QLineEdit(self)
         self.testerSaEdit.setObjectName("testerSaEdit")
-        form.addRow("Tester SA / Tester 地址", self.testerSaEdit)
+        form.addRow(tr("tester_sa", self._language), self.testerSaEdit)
 
-        self.autoDetectCheck = QCheckBox("Auto detect / 自动检测", self)
+        self.autoDetectCheck = QCheckBox(tr("auto_detect", self._language), self)
         self.autoDetectCheck.setObjectName("autoDetectCheck")
-        form.addRow("Addressing / 地址", self.autoDetectCheck)
-        self.enable11BitCheck = QCheckBox("Enable 11-bit heuristic / 启用 11 位启发式", self)
+        form.addRow(tr("addressing_label", self._language), self.autoDetectCheck)
+        self.enable11BitCheck = QCheckBox(tr("enable_11bit", self._language), self)
         self.enable11BitCheck.setObjectName("enable11BitCheck")
         form.addRow("", self.enable11BitCheck)
-        self.enable29BitCheck = QCheckBox("Enable 29-bit normal fixed / 启用 29 位标准地址", self)
+        self.enable29BitCheck = QCheckBox(tr("enable_29bit", self._language), self)
         self.enable29BitCheck.setObjectName("enable29BitCheck")
         form.addRow("", self.enable29BitCheck)
 
         self.addressingModeCombo = QComboBox(self)
         self.addressingModeCombo.setObjectName("addressingModeCombo")
         self.addressingModeCombo.addItems(["auto", "normal", "extended", "mixed"])
-        form.addRow("ISO-TP mode / ISO-TP 模式", self.addressingModeCombo)
+        form.addRow(tr("isotp_mode", self._language), self.addressingModeCombo)
 
         self.timeoutEdits: dict[str, QSpinBox] = {}
-        for key, label in (
-            ("isotp_fc_ms", "ISO-TP FC timeout (ms) / FC 超时"),
-            ("isotp_cf_ms", "ISO-TP CF timeout (ms) / CF 超时"),
-            ("uds_p2_ms", "UDS P2 timeout (ms) / P2 超时"),
-            ("uds_p2_star_ms", "UDS P2* timeout (ms) / P2* 超时"),
+        for key, label_key in (
+            ("isotp_fc_ms", "fc_timeout"),
+            ("isotp_cf_ms", "cf_timeout"),
+            ("uds_p2_ms", "p2_timeout"),
+            ("uds_p2_star_ms", "p2_star_timeout"),
         ):
             spin = QSpinBox(self)
             spin.setObjectName(key)
             spin.setRange(0, 2_147_483_647)
             self.timeoutEdits[key] = spin
-            form.addRow(label, spin)
+            form.addRow(tr(label_key, self._language), spin)
 
         layout.addLayout(form)
         self.errorLabel = QTextEdit(self)
@@ -114,9 +118,9 @@ class ConfigDialog(QDialog):
         layout.addWidget(self.errorLabel)
 
         file_buttons = QDialogButtonBox(self)
-        self.loadButton = QPushButton("Load JSON / 加载 JSON", self)
+        self.loadButton = QPushButton(tr("load_json", self._language), self)
         self.loadButton.setObjectName("loadConfigButton")
-        self.saveAsButton = QPushButton("Save JSON / 保存 JSON", self)
+        self.saveAsButton = QPushButton(tr("save_json", self._language), self)
         self.saveAsButton.setObjectName("saveConfigButton")
         file_buttons.addButton(self.loadButton, QDialogButtonBox.ButtonRole.ActionRole)
         file_buttons.addButton(self.saveAsButton, QDialogButtonBox.ButtonRole.ActionRole)
@@ -128,6 +132,8 @@ class ConfigDialog(QDialog):
         self.cancelButton = buttons.button(QDialogButtonBox.StandardButton.Cancel)
         self.cancelButton.setObjectName("cancelButton")
         layout.addWidget(buttons)
+        self.saveButton.setText(tr("save", self._language))
+        self.cancelButton.setText(tr("cancel", self._language))
 
         self.testerSaEdit.textChanged.connect(self.validate_form)
         self.autoDetectCheck.stateChanged.connect(self.validate_form)
@@ -230,7 +236,7 @@ class ConfigDialog(QDialog):
 
     def _load_from_file_dialog(self) -> None:
         start = self._settings.value("ui/last_open_dir", "")
-        path, _ = QFileDialog.getOpenFileName(self, "Load configuration / 加载配置", str(start), "JSON (*.json)")
+        path, _ = QFileDialog.getOpenFileName(self, tr("load_config_dialog", self._language), str(start), "JSON (*.json)")
         if path:
             self.load_config(path)
 
@@ -238,9 +244,9 @@ class ConfigDialog(QDialog):
         if not self.validate_form():
             return
         start = self._settings.value("ui/last_open_dir", "flashreport-config.json")
-        path, _ = QFileDialog.getSaveFileName(self, "Save configuration / 保存配置", str(start), "JSON (*.json)")
+        path, _ = QFileDialog.getSaveFileName(self, tr("save_config_dialog", self._language), str(start), "JSON (*.json)")
         if path:
             try:
                 self.save_config(path)
             except OSError as exc:
-                QMessageBox.critical(self, "Save failed / 保存失败", str(exc))
+                QMessageBox.critical(self, tr("save_failed", self._language), str(exc))

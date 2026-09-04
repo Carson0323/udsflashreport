@@ -28,8 +28,8 @@ Launch the GUI with `flashreport-gui` (or `python -m flashreport_gui.app`).
 
 ## 项目状态 | Project Status
 
-当前处于 M7 发布候选构建阶段：M6 GUI 已完成，正在进行 Windows 打包、私有语料回归和人工发布前验收。
-Currently at the M7 release-candidate build stage: the M6 GUI is complete, and Windows packaging, private-corpus regression, and pre-release human review are in progress.
+当前处于 M8 发布前候选构建阶段：M7 Windows 打包和私有语料回归已完成，等待人工发布前验收。
+Currently at the M8 pre-release candidate stage: M7 Windows packaging and private-corpus regression are complete, pending human pre-release review.
 
 M2 已支持 SF/FF/CF/FC 事件化、SN 校验、CF/STmin/BS/WAIT/OVFLW/超时诊断，以及按双向 conversation 进行 Transport Validator 校验。UDS 解码、会话、归因和报告将在后续里程碑完成。
 M2 supports SF/FF/CF/FC eventization, sequence-number checks, CF/STmin/BS/WAIT/OVFLW/timeout diagnostics, and bidirectional conversation validation. UDS decoding, sessions, attribution, and reports are scheduled for later milestones.
@@ -57,6 +57,9 @@ M7 adds requirements.lock, deployment preflight, a PyInstaller onedir build benc
 
 本轮 GUI 增强已支持更紧凑的 CH/DLC 列、按时间排序、方向与 CF 筛选、Data 字节语义色块、Finding 到证据行的直接定位、深浅色主题切换，以及大规模 Finding 的虚拟列表；私有报文仍只在本机处理。
 This GUI refinement adds compact CH/DLC columns, chronological sorting, direction and CF filters, semantic Data-byte color blocks, direct Finding-to-evidence navigation, light/dark themes, and a virtual list for large Finding sets. Private traces remain local-only.
+
+M8 已加入独立的中文/English UI 选择（表头与 CF/FF/BSC 等协议缩写保持英文）、干净的未加载空状态、所有详情页联动、可定位的 ECU NRC Finding（UDS-002）和人工复核原因说明；刷写流程页按 UDS 请求展示会话、DID、RoutineID、下载起始地址/长度、TransferData 分段统计，并识别物理/功能寻址。TransferData 中间数据不会被流程摘要重复展开。
+M8 adds an independent Chinese/English UI selector (table headers and protocol abbreviations such as CF/FF/BSC stay in English), a clean pre-load empty state, synchronized detail tabs, locatable ECU NRC findings (UDS-002), and explicit manual-review reasons. The Flash Flow tab presents UDS requests with session, DID, RoutineID, download start/length, TransferData segment statistics, and physical/functional addressing. TransferData payload bodies are not duplicated in the workflow summary.
 
 开发按冻结规格 M0→M7 进行，每个里程碑都必须通过对应的自动化测试 Gate。
 Development follows the frozen M0→M7 specification; each milestone must pass its automated test Gate.

@@ -33,7 +33,7 @@ def test_window_constraints_hold_at_review_sizes(qtbot, tmp_path) -> None:
 def test_theme_can_switch_between_light_and_dark(qtbot, tmp_path) -> None:
     window = MainWindow(QSettings(str(tmp_path / "theme.ini"), QSettings.Format.IniFormat))
     qtbot.addWidget(window)
-    assert window.themeButton.text() == "Dark / 深色"
+    assert window.themeButton.text() == "深色模式"
     qtbot.mouseClick(window.themeButton, Qt.MouseButton.LeftButton)
-    assert window.themeButton.text() == "Light / 浅色"
+    assert window.themeButton.text() == "浅色模式"
     assert window._dark_mode is True

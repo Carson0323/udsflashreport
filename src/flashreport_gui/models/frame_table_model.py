@@ -304,7 +304,7 @@ class FrameFilterProxyModel(QSortFilterProxyModel):
         self.setFilterCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
         self.setFilterKeyColumn(-1)
         self.setSortRole(FRAME_SORT_ROLE)
-        self._allowed_directions = {"tester->ecu", "ecu->tester", "other"}
+        self._allowed_directions = {"tester->ecu", "ecu->tester", "functional", "other"}
         self._hide_cf = False
 
     def set_query(self, query: str) -> None:

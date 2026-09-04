@@ -15,7 +15,7 @@ def test_findings_yaml_and_registry_are_consistent() -> None:
     raw = load_findings_yaml()
     specs = load_rule_specs()
 
-    assert len(raw["findings"]) == 7
+    assert len(raw["findings"]) == 8
     assert set(specs) == {
         "ISO-TP-001",
         "ISO-TP-002",
@@ -23,6 +23,7 @@ def test_findings_yaml_and_registry_are_consistent() -> None:
         "ISO-TP-004",
         "ISO-TP-005",
         "UDS-001",
+        "UDS-002",
         "FLASH-001",
     }
     assert registry_consistency_errors() == []

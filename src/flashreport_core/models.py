@@ -261,6 +261,7 @@ class RulesConfig:
     iso_tp_004: bool = True
     iso_tp_005: bool = True
     uds_001: bool = True
+    uds_002: bool = True
     flash_001: bool = True
 
 
@@ -286,6 +287,7 @@ RULE_CONFIG_KEYS = {
     "iso_tp_004": "ISO-TP-004",
     "iso_tp_005": "ISO-TP-005",
     "uds_001": "UDS-001",
+    "uds_002": "UDS-002",
     "flash_001": "FLASH-001",
 }
 
@@ -298,6 +300,8 @@ class FrameAnnotation:
     isotp_summary: str | None
     uds_summary: str | None
     summary: str
+    addressing_mode: str = "unknown"
+    uds_details: dict = field(default_factory=dict)
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -331,4 +335,4 @@ class AnalysisResult:
     report_data: dict
     frame_annotations: dict[str, FrameAnnotation]
     conversation_summaries: list[ConversationSummary]
-
+    workflow_steps: list[dict] = field(default_factory=list)

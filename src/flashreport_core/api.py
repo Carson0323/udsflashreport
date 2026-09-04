@@ -31,9 +31,9 @@ def validate_config(data: dict) -> ConfigValidationResult:
 def load_trace(path: str, cfg: AppConfig) -> TraceBundle:
     """Load, address, eventize, and reconstruct an input trace.
 
-    This is the public read-only pipeline. UDS decoding and attribution are
-    intentionally left to later milestones; load-time annotations therefore
-    keep ``uds_summary`` as ``None``.
+    This is the public read-only pipeline.  It preserves the original frame
+    chronology, marks physical versus functional addressing, and leaves UDS
+    attribution to ``analyze_trace``.
     """
 
     reader_result = read_trace(path)
@@ -70,6 +70,13 @@ def load_trace(path: str, cfg: AppConfig) -> TraceBundle:
     for frame in frames:
         addressed_frame = addressed_by_ref.get(frame.frame_ref)
         role = addressed_frame.role if addressed_frame is not None else "other"
+        addressing_mode = (
+            "functional"
+            if role == "functional"
+            else "physical"
+            if role in {"tester->ecu", "ecu->tester"}
+            else "unknown"
+        )
         event = event_by_ref.get(frame.frame_ref)
         isotp_summary = _event_summary(event) if event is not None else None
         annotations[frame.frame_ref] = FrameAnnotation(
@@ -78,6 +85,7 @@ def load_trace(path: str, cfg: AppConfig) -> TraceBundle:
             isotp_summary=isotp_summary,
             uds_summary=None,
             summary=isotp_summary or role,
+            addressing_mode=addressing_mode,
         )
 
     input_stats = dict(reader_result.input_stats)

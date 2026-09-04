@@ -8,6 +8,7 @@ from .uds.tables import POSITIVE_SERVICE_NAMES, SERVICE_NAMES
 
 
 FUNCTIONAL_REQUEST_ID = 0x18DB33F1
+FUNCTIONAL_REQUEST_ID_11BIT = 0x7DF
 NORMAL_FIXED_BASE = 0x18DA0000
 
 
@@ -124,7 +125,12 @@ def _address_one(frame: RawFrame, config: AddressingConfig) -> tuple[str, str | 
         if match is not None:
             return match
 
-    if frame.is_extended and frame.can_id == FUNCTIONAL_REQUEST_ID:
+    if frame.is_extended and (
+        frame.can_id == FUNCTIONAL_REQUEST_ID
+        or (frame.can_id & 0x1FFFFF00) == (FUNCTIONAL_REQUEST_ID & 0x1FFFFF00)
+    ):
+        return "functional", None
+    if not frame.is_extended and frame.can_id == FUNCTIONAL_REQUEST_ID_11BIT:
         return "functional", None
 
     if config.auto_detect and config.enable_29bit_normal_fixed:
@@ -218,6 +224,7 @@ def group_by_pair_key(frames: Iterable[AddressedFrame]) -> dict[str, list[Addres
 
 __all__ = [
     "FUNCTIONAL_REQUEST_ID",
+    "FUNCTIONAL_REQUEST_ID_11BIT",
     "NORMAL_FIXED_BASE",
     "address_frames",
     "address_trace",

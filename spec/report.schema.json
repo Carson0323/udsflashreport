@@ -13,7 +13,8 @@
     "input_stats": {"type": "object"},
     "findings": {"type": "array", "items": {"$ref": "#/$defs/finding"}},
     "first_deviation": {"anyOf": [{"$ref": "#/$defs/finding"}, {"type": "null"}]},
-    "summary": {"type": "object"}
+    "summary": {"type": "object"},
+    "workflow": {"type": "array", "items": {"type": "object"}}
   },
   "$defs": {
     "finding": {
@@ -21,7 +22,7 @@
       "additionalProperties": false,
       "required": ["finding_id", "layer", "category", "deviation_ts", "detected_ts", "observed", "expected", "suspected_side", "confidence", "session", "service", "detail", "evidence", "superseded_by", "needs_normative_confirmation"],
       "properties": {
-        "finding_id": {"type": "string", "enum": ["ISO-TP-001", "ISO-TP-002", "ISO-TP-003", "ISO-TP-004", "ISO-TP-005", "UDS-001", "FLASH-001"]},
+        "finding_id": {"type": "string", "enum": ["ISO-TP-001", "ISO-TP-002", "ISO-TP-003", "ISO-TP-004", "ISO-TP-005", "UDS-001", "UDS-002", "FLASH-001"]},
         "layer": {"type": "string", "enum": ["ISO-TP", "UDS", "FLASH"]},
         "category": {"type": "string"},
         "deviation_ts": {"type": "number"},

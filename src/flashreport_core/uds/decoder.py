@@ -65,7 +65,7 @@ def decode_uds(value: bytes | bytearray | IsoTpPdu) -> UdsMessage:
     elif base_sid in SUBFUNCTION_SERVICES:
         if len(raw) >= 2:
             subfunction = raw[1] & 0x7F
-    elif base_sid == 0x22:
+    elif base_sid in {0x22, 0x2E}:
         if len(raw) >= 3:
             did = int.from_bytes(raw[1:3], "big")
     elif base_sid == 0x36:

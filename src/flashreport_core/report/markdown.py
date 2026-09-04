@@ -73,6 +73,18 @@ def render_markdown(report: dict[str, Any]) -> str:
         lines.extend(_evidence_line(evidence) for evidence in finding.get("evidence", []))
         lines.append("")
 
+    workflow = report.get("workflow") or []
+    lines.extend(["## 刷写流程 / Flash Flow", ""])
+    if not workflow:
+        lines.append("No UDS workflow steps were identified / 未识别到 UDS 刷写流程步骤。")
+    else:
+        for step in workflow:
+            lines.append(
+                f"- **{step.get('step_index')}** `{step.get('ts_start')}` "
+                f"{step.get('addressing', 'physical')} · {step.get('detail', '')}"
+            )
+        lines.append("")
+
     lines.extend(
         [
             "## 建议 / Recommendation",

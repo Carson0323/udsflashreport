@@ -26,9 +26,7 @@ EXPECTED_FINDINGS: dict[str, set[str]] = {
         "ISO-TP-005",
     },
     "missing_flow_control_timeout": {"ISO-TP-001", "ISO-TP-004"},
-    # A non-pending NRC is intentionally represented by the public UDS
-    # annotation contract, not converted into a new frozen Finding type.
-    "ecu_negative_response": set(),
+    "ecu_negative_response": {"UDS-002"},
     "cf_sequence_violation": {"ISO-TP-003"},
 }
 
@@ -69,6 +67,12 @@ def _run_variant(variant: dict[str, Any], report_root: Path) -> dict[str, Any]:
             if not matched:
                 raise AssertionError(
                     f"scenario {scenario} produced no {expected_nrc} NRC annotation"
+                )
+            matched = sorted(expected.intersection(finding_ids))
+            if not matched:
+                raise AssertionError(
+                    f"scenario {scenario} produced NRC annotation but no formal finding; "
+                    f"got {finding_ids}, expected one of {sorted(expected)}"
                 )
         else:
             matched = sorted(expected.intersection(finding_ids))

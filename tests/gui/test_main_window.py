@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from PySide6.QtCore import QSettings
+from PySide6.QtCore import QSettings, Qt
 from PySide6.QtWidgets import QLabel, QFrame, QPushButton, QScrollArea, QTableView, QTabWidget, QTreeView
 
 from flashreport_core.models import (
@@ -78,6 +78,7 @@ def test_main_window_exposes_frozen_object_names_and_empty_state(qtbot, tmp_path
     assert window.findChild(QScrollArea, "findingList") is not None
     assert window.findChild(QTabWidget, "detailTabs") is not None
     assert window.statusState.text() == "EMPTY"
+    assert window.frameHeading.isHidden()
     assert window.analyzeButton.isEnabled() is False
     assert window.exportButton.isEnabled() is False
 
@@ -180,7 +181,47 @@ def test_large_finding_result_uses_virtual_list(qtbot, tmp_path) -> None:
     window.set_analysis_result(result)
 
     assert window.findingListView.isHidden() is False
-    assert window.findingSummaryLabel.text().startswith("101 findings")
+    assert "101" in window.findingSummaryLabel.text()
     assert window.findChild(QFrame, "findingCard_UDS-000") is None
     window.findingListView.setCurrentIndex(window.findingModel.index(0, 0))
-    assert "Finding / 发现: UDS-000" in window.findChild(QLabel, "evidenceDetailTabText").text()
+    assert "UDS-000" in window.findChild(QLabel, "evidenceDetailTabText").text()
+
+
+def test_language_switch_keeps_protocol_table_headers_english(qtbot, tmp_path) -> None:
+    settings = QSettings(str(tmp_path / "language.ini"), QSettings.Format.IniFormat)
+    window = MainWindow(settings=settings)
+    qtbot.addWidget(window)
+
+    window.languageCombo.setCurrentIndex(window.languageCombo.findData("en"))
+
+    assert window.openButton.text() == "Open"
+    assert window.frameModel.headerData(1, Qt.Orientation.Horizontal) == "Time"
+    assert window.frameModel.headerData(8, Qt.Orientation.Horizontal) == "ISO-TP"
+
+
+def test_selecting_a_frame_populates_all_detail_tabs(qtbot, tmp_path) -> None:
+    settings = QSettings(str(tmp_path / "details.ini"), QSettings.Format.IniFormat)
+    window = MainWindow(settings=settings)
+    qtbot.addWidget(window)
+    bundle = _bundle()
+    frame = bundle.frames[0]
+    bundle.frame_annotations[frame.frame_ref] = FrameAnnotation(
+        frame_ref=frame.frame_ref,
+        direction="tester->ecu",
+        isotp_summary="SF len=2",
+        uds_summary="0x10 DiagnosticSessionControl",
+        summary="SF len=2 | 0x10 DiagnosticSessionControl",
+        addressing_mode="physical",
+        uds_details={
+            "service_name": "DiagnosticSessionControl",
+            "subfunction": 2,
+            "session": "programming",
+            "raw": "1002",
+        },
+    )
+    window.set_bundle(bundle)
+    window.frameTable.setCurrentIndex(window.frameProxyModel.index(0, 0))
+
+    assert "SF len=2" in window.findChild(QLabel, "isotpDetailTabText").text()
+    assert "DiagnosticSessionControl" in window.findChild(QLabel, "udsDetailTabText").text()
+    assert "programming" in window.findChild(QLabel, "sessionDetailTabText").text()

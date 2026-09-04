@@ -15,7 +15,7 @@ from .transport_rules import (
     sn_gap,
     stmin_violation,
 )
-from .uds_rules import no_final_response
+from .uds_rules import negative_response, no_final_response
 
 
 Evaluator = Callable[..., Any]
@@ -40,6 +40,7 @@ RULE_EVALUATORS: dict[str, Evaluator] = {
     "missing_fc_after_block": missing_fc_after_block,
     "stmin_violation": stmin_violation,
     "no_final_response": no_final_response,
+    "negative_response": negative_response,
     "oversize_or_bsc_error": oversize_or_bsc_error,
 }
 
@@ -81,6 +82,7 @@ def registry_consistency_errors(path: str | Path | None = None) -> list[str]:
         "ISO-TP-004",
         "ISO-TP-005",
         "UDS-001",
+        "UDS-002",
         "FLASH-001",
     }
     if set(specs) != expected_ids:

@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 
 from flashreport_core.api import analyze_trace, default_config, load_trace
+from flashreport_core.addressing import FUNCTIONAL_REQUEST_ID_11BIT, address_frames
 from flashreport_core.models import (
     AddressedFrame,
     FrameAnnotation,
@@ -15,6 +16,7 @@ from flashreport_core.models import (
 )
 from flashreport_core.isotp.events import decode_event
 from flashreport_core.isotp.reconstructor import reconstruct_pdus
+from flashreport_core.uds.decoder import decode_uds
 
 
 PAIR_KEY = "1:18DA10F1<->18DAF110"
@@ -160,6 +162,127 @@ def test_pending_then_final_response_is_not_a_finding() -> None:
     ]
     result = analyze_trace(_direct_bundle(pdus, 2.0), default_config())
     assert result.findings == []
+
+
+def test_final_ecu_negative_response_is_a_locatable_finding() -> None:
+    pdus = [
+        _direct_pdu(bytes.fromhex("3400440000"), 1.0, 1, "tester->ecu"),
+        _direct_pdu(bytes.fromhex("7F3472"), 1.1, 2, "ecu->tester"),
+    ]
+    result = analyze_trace(_direct_bundle(pdus, 2.0), default_config())
+    finding = next(finding for finding in result.findings if finding.finding_id == "UDS-002")
+    assert finding.suspected_side == "ecu"
+    assert finding.detail["nrc"] == 0x72
+    assert [e.frame_ref for e in finding.evidence] == [
+        pdus[0].frames[0].frame_ref,
+        pdus[1].frames[0].frame_ref,
+    ]
+
+
+def test_decoder_and_workflow_keep_exact_did_data_and_compact_transfer_data() -> None:
+    assert decode_uds(bytes.fromhex("2E1234AABB")).did == 0x1234
+    assert decode_uds(bytes.fromhex("6E1234")).did == 0x1234
+    valid_download = _direct_pdu(bytes.fromhex("3400440000000000000400"), 0.0, 1, "tester->ecu")
+    valid_download_response = _direct_pdu(bytes.fromhex("74200402"), 0.1, 2, "ecu->tester")
+    valid_transfer = _direct_pdu(bytes([0x36, 0x01]) + b"A" * 0x401, 1.0, 3, "tester->ecu")
+    valid_transfer_response = _direct_pdu(bytes.fromhex("7601"), 1.1, 4, "ecu->tester")
+    result = analyze_trace(
+        _direct_bundle(
+            [valid_download, valid_download_response, valid_transfer, valid_transfer_response],
+            2.0,
+        ),
+        default_config(),
+    )
+    workflow = result.workflow_steps
+    download = next(step for step in workflow if step["sid"] == 0x34)
+    transfer = next(step for step in workflow if step["sid"] == 0x36)
+    assert "start=0x0" in download["detail"]
+    assert "length=0x400" in download["detail"]
+    assert transfer["fields"]["transfer_data_length"] == 0x401
+    assert transfer["fields"]["raw"].startswith("36 BSC=01 payload_bytes=")
+    assert len(transfer["fields"]["raw"]) < 64
+
+
+def test_standard_11bit_functional_address_is_explicit() -> None:
+    raw = RawFrame(
+        ts_seconds=1.0,
+        ts_display="1.000000",
+        source_ts_metadata={},
+        can_id=FUNCTIONAL_REQUEST_ID_11BIT,
+        is_extended=False,
+        channel=1,
+        is_fd=False,
+        dlc=3,
+        data=bytes.fromhex("021003"),
+        source="synthetic",
+        line_no=1,
+    )
+    addressed = address_frames([raw], default_config().addressing)
+    assert addressed[0].role == "functional"
+    assert addressed[0].pair_key is None
+
+
+def test_workflow_describes_read_write_did_content() -> None:
+    pdus = [
+        _direct_pdu(bytes.fromhex("2E1234AABB"), 1.0, 1, "tester->ecu"),
+        _direct_pdu(bytes.fromhex("6E1234"), 1.1, 2, "ecu->tester"),
+        _direct_pdu(bytes.fromhex("221234"), 2.0, 3, "tester->ecu"),
+        _direct_pdu(bytes.fromhex("621234DEAD"), 2.1, 4, "ecu->tester"),
+    ]
+    result = analyze_trace(_direct_bundle(pdus, 3.0), default_config())
+    write_step = next(step for step in result.workflow_steps if step["sid"] == 0x2E)
+    read_step = next(step for step in result.workflow_steps if step["sid"] == 0x22)
+    assert "DID=0x1234" in write_step["detail"]
+    assert "write_data=AABB" in write_step["detail"]
+    assert "DID=0x1234" in read_step["detail"]
+    assert "read_data=DEAD" in read_step["detail"]
+
+
+def test_workflow_retains_functional_addressing_step() -> None:
+    raw = RawFrame(
+        ts_seconds=1.0,
+        ts_display="1.000000",
+        source_ts_metadata={},
+        can_id=FUNCTIONAL_REQUEST_ID_11BIT,
+        is_extended=False,
+        channel=1,
+        is_fd=False,
+        dlc=3,
+        data=bytes.fromhex("021003"),
+        source="synthetic",
+        line_no=1,
+    )
+    bundle = TraceBundle(
+        path="synthetic",
+        frames=[raw],
+        conversations=[],
+        quality=TraceQuality(
+            start_ts=1.0,
+            end_ts=1.0,
+            has_capture_gap=False,
+            dropped_frame_count=0,
+            source_channels=[1],
+            filter_state_known=True,
+            completeness="verified",
+        ),
+        input_stats={},
+        frame_annotations={
+            raw.frame_ref: FrameAnnotation(
+                frame_ref=raw.frame_ref,
+                direction="functional",
+                isotp_summary="SF len=2",
+                uds_summary=None,
+                summary="SF len=2",
+                addressing_mode="functional",
+            )
+        },
+        conversation_summaries=[],
+    )
+    result = analyze_trace(bundle, default_config())
+    step = result.workflow_steps[0]
+    assert step["addressing"] == "functional"
+    assert step["sid"] == 0x10
+    assert result.frame_annotations[raw.frame_ref].uds_summary.startswith("0x10")
 
 
 def test_pending_timeout_uses_default_assumption_and_is_medium() -> None:

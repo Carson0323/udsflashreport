@@ -55,7 +55,7 @@
     "rules": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["ISO-TP-001", "ISO-TP-002", "ISO-TP-003", "ISO-TP-004", "ISO-TP-005", "UDS-001", "FLASH-001"],
+      "required": ["ISO-TP-001", "ISO-TP-002", "ISO-TP-003", "ISO-TP-004", "ISO-TP-005", "UDS-001", "UDS-002", "FLASH-001"],
       "properties": {
         "ISO-TP-001": {"type": "boolean"},
         "ISO-TP-002": {"type": "boolean"},
@@ -63,9 +63,9 @@
         "ISO-TP-004": {"type": "boolean"},
         "ISO-TP-005": {"type": "boolean"},
         "UDS-001": {"type": "boolean"},
+        "UDS-002": {"type": "boolean"},
         "FLASH-001": {"type": "boolean"}
       }
     }
   }
 }
-

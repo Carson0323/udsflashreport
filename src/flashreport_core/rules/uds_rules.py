@@ -36,7 +36,9 @@ def no_final_response(issue: PendingIssue, ctx: RuleContext):
         response_id = response_frame.frame.can_id if response_frame is not None else None
     evidence = pdu_evidence(
         transaction.pdu_req,
-        f"UDS request 0x{transaction.request.sid:02X}" if transaction.request.sid is not None else "UDS request",
+        f"UDS request 0x{transaction.request.sid:02X}"
+        if transaction.request.sid is not None
+        else "UDS request",
     )
     evidence.append(
         WindowEvidence(
@@ -80,4 +82,76 @@ def no_final_response(issue: PendingIssue, ctx: RuleContext):
     )
 
 
-__all__ = ["no_final_response"]
+def negative_response(_issue, ctx: RuleContext):
+    """Emit an evidence-backed Finding for a final ECU NRC response."""
+
+    transaction = ctx.transaction
+    if transaction is None or transaction.final_response is None:
+        return None
+    response = transaction.final_response
+    if response.is_positive is not False or response.pending:
+        return None
+    request_ts = (
+        transaction.pdu_req.ts_start
+        if transaction.pdu_req is not None
+        else ctx.trace_end_ts
+    )
+    response_ts = (
+        transaction.pdu_resp.ts_start
+        if transaction.pdu_resp is not None
+        else request_ts
+    )
+    evidence = pdu_evidence(
+        transaction.pdu_req,
+        f"UDS request 0x{transaction.request.sid:02X}"
+        if transaction.request.sid is not None
+        else "UDS request",
+    )
+    evidence.extend(
+        pdu_evidence(
+            transaction.pdu_resp,
+            f"ECU negative response NRC=0x{response.nrc:02X}"
+            if response.nrc is not None
+            else "ECU negative response",
+        )
+    )
+    if len(evidence) < 2:
+        return None
+    service = transaction.request.service_name or "unknown service"
+    return build_finding(
+        ctx=ctx,
+        finding_id="UDS-002",
+        layer="UDS",
+        category="ecu_negative_response",
+        deviation_ts=response_ts,
+        detected_ts=response_ts,
+        observed=(
+            f"ECU returned NRC=0x{response.nrc:02X} "
+            f"({response.nrc_text or 'unknownNRC'})"
+            if response.nrc is not None
+            else "ECU returned a malformed negative response"
+        ),
+        expected=f"Positive response for {service}",
+        suspected_side="ecu",
+        base_confidence="high",
+        detail={
+            "request_sid": transaction.request.sid,
+            "service": service,
+            "nrc": response.nrc,
+            "nrc_name": response.nrc_text,
+            "request_raw": transaction.request.raw.hex().upper(),
+            "response_raw": response.raw.hex().upper(),
+            "request_frame_ref": transaction.pdu_req.frames[0].frame_ref
+            if transaction.pdu_req and transaction.pdu_req.frames
+            else None,
+            "response_frame_ref": transaction.pdu_resp.frames[0].frame_ref
+            if transaction.pdu_resp and transaction.pdu_resp.frames
+            else None,
+        },
+        evidence=evidence,
+        session=session_at(ctx.sessions, request_ts),
+        service=transaction.request.service_name,
+    )
+
+
+__all__ = ["negative_response", "no_final_response"]

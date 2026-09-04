@@ -39,6 +39,12 @@ findings:
     evidence: { min_count: 2, required_types: [frame, absence_window] }
     confidence_policy: window_and_timing
     supersede: true
+  - id: UDS-002
+    evaluator: negative_response
+    params: {}
+    side_mapping: { server: ecu }
+    evidence: { min_count: 2, allowed_types: [frame] }
+    confidence_policy: window_and_timing
   - id: FLASH-001
     evaluator: oversize_or_bsc_error
     params: {}
@@ -46,4 +52,3 @@ findings:
     evidence: { min_count: 2, allowed_types: [frame] }
     confidence: high
     confidence_policy: window_and_timing
-

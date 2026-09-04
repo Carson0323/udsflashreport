@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QApplication,
     QCheckBox,
+    QComboBox,
     QFrame,
     QHeaderView,
     QHBoxLayout,
@@ -25,6 +26,7 @@ from PySide6.QtWidgets import (
     QSplitter,
     QTabWidget,
     QTableView,
+    QTextEdit,
     QToolBar,
     QTreeView,
     QVBoxLayout,
@@ -46,6 +48,7 @@ from .models import (
     FrameTableDelegate,
     FrameTableModel,
 )
+from .i18n import LANGUAGE_CODES, LANGUAGE_LABELS, tr
 from .theme import DARK_TOKENS, LIGHT_TOKENS, apply_theme, icon_for
 
 
@@ -84,6 +87,8 @@ class MainWindow(QMainWindow):
         self.resize(1440, 900)
         self.setMinimumSize(1100, 650)
         self._settings = settings or QSettings()
+        stored_language = str(self._settings.value("ui/language", "zh")).casefold()
+        self._language = stored_language if stored_language in LANGUAGE_CODES else "zh"
         self._dark_mode = self._setting_bool(self._settings.value("ui/dark_mode", False))
         self._theme_tokens = DARK_TOKENS if self._dark_mode else LIGHT_TOKENS
         app = QApplication.instance()
@@ -96,6 +101,8 @@ class MainWindow(QMainWindow):
         self._active_path: str | None = None
         self._exporting = False
         self._finding_card_limit = 100
+        self._workflow_steps: list[dict] = []
+        self._last_error_message = ""
         self.heartbeatMaxGapMs = 0.0  # noqa: N815
         self._heartbeat_last = monotonic()
         self._heartbeat_timer = QTimer(self)
@@ -128,6 +135,8 @@ class MainWindow(QMainWindow):
         self.exportButton.clicked.connect(self._export_file_dialog)
         self.settingsButton.clicked.connect(self._open_settings_dialog)
         self.themeButton.clicked.connect(self._toggle_theme)
+        self.languageCombo.currentIndexChanged.connect(self._on_language_changed)
+        self._retranslate_ui()
 
     @staticmethod
     def _setting_bool(value: object) -> bool:
@@ -145,7 +154,7 @@ class MainWindow(QMainWindow):
         self.brandIcon.setObjectName("brandIcon")
         self.brandIcon.setPixmap(icon_for("flashreport", self._theme_tokens).pixmap(20, 20))
         self.toolbar.addWidget(self.brandIcon)
-        self.brandLabel = QLabel("FlashReport / Trace 分析", self.toolbar)
+        self.brandLabel = QLabel(self.toolbar)
         self.brandLabel.setObjectName("brandLabel")
         self.toolbar.addWidget(self.brandLabel)
         self.openButton = self._toolbar_button("Open / 打开", "openButton")
@@ -157,6 +166,15 @@ class MainWindow(QMainWindow):
         self.themeButton.setCheckable(True)
         self.themeButton.setChecked(self._dark_mode)
         self.toolbar.addWidget(self.themeButton)
+        self.languageLabel = QLabel(self.toolbar)
+        self.languageLabel.setObjectName("languageLabel")
+        self.toolbar.addWidget(self.languageLabel)
+        self.languageCombo = QComboBox(self.toolbar)
+        self.languageCombo.setObjectName("languageCombo")
+        for code in LANGUAGE_CODES:
+            self.languageCombo.addItem(LANGUAGE_LABELS[code], code)
+        self.languageCombo.setCurrentIndex(max(0, self.languageCombo.findData(self._language)))
+        self.toolbar.addWidget(self.languageCombo)
         self._update_theme_button()
 
     def _toolbar_button(self, text: str, object_name: str) -> QPushButton:
@@ -174,12 +192,226 @@ class MainWindow(QMainWindow):
         return button
 
     def _update_theme_button(self) -> None:
-        self.themeButton.setText("Light / 浅色" if self._dark_mode else "Dark / 深色")
+        self.themeButton.setText(tr("switch_light", self._language) if self._dark_mode else tr("switch_dark", self._language))
         self.themeButton.setToolTip(
-            "Switch to light mode / 切换到浅色模式"
+            tr("switch_light", self._language)
             if self._dark_mode
-            else "Switch to dark mode / 切换到深色模式"
+            else tr("switch_dark", self._language)
         )
+
+    @Slot(int)
+    def _on_language_changed(self, index: int) -> None:
+        code = self.languageCombo.itemData(index)
+        if code not in LANGUAGE_CODES:
+            return
+        self._language = str(code)
+        self._settings.setValue("ui/language", self._language)
+        self._retranslate_ui()
+
+    def _t(self, key: str, **values: object) -> str:
+        return tr(key, self._language, **values)
+
+    def _retranslate_ui(self) -> None:
+        """Update GUI chrome without translating protocol abbreviations/data."""
+
+        self.setWindowTitle(self._t("app_title"))
+        self.brandLabel.setText(self._t("brand"))
+        self.openButton.setText(self._t("open"))
+        self.analyzeButton.setText(self._t("analyze"))
+        self.exportButton.setText(self._t("export"))
+        self.settingsButton.setText(self._t("settings"))
+        self.languageLabel.setText(self._t("language"))
+        self.conversationHeading.setText(self._t("conversations"))
+        self.frameHeading.setText(self._t("can_frames"))
+        self.findingHeading.setText(self._t("findings"))
+        self.filterLabel.setText(self._t("filter"))
+        self.frameSearch.setPlaceholderText(self._t("search_placeholder"))
+        self.directionOtherCheck.setText(self._t("other"))
+        self.directionFunctionalCheck.setText(self._t("functional"))
+        self.showCfCheck.setText(self._t("show_cf"))
+        self.highlightDirectionCheck.setText(self._t("color_direction"))
+        self.dataLegendLabel.setText(self._t("data_legend"))
+        self.emptyCenterLabel.setText(
+            self._t("loading")
+            if self._state == "LOADING"
+            else self._t("analyzing")
+            if self._state == "ANALYZING"
+            else self._t("empty_trace")
+        )
+        self._update_theme_button()
+        if self._bundle is not None:
+            self.statusFrameCount.setText(
+                self._t("frames_status", count=len(self._bundle.frames))
+            )
+            self._update_channel_status(self._bundle)
+        else:
+            self.statusFrameCount.setText(self._t("frames_status", count=0))
+            self.statusChannel.setText(self._t("channel_status", channels="—"))
+        finding_count = len(self._analysis_result.findings) if self._analysis_result else 0
+        self.statusFindingCount.setText(self._t("findings_status", count=finding_count))
+        tab_titles = {
+            "frameDetailTab": self._t("frame_details"),
+            "isotpDetailTab": "ISO-TP",
+            "udsDetailTab": "UDS",
+            "sessionDetailTab": self._t("session_details"),
+            "evidenceDetailTab": self._t("evidence"),
+            "workflowDetailTab": self._t("workflow"),
+        }
+        for index in range(self.detailTabs.count()):
+            tab = self.detailTabs.widget(index)
+            if tab is not None and tab.objectName() in tab_titles:
+                self.detailTabs.setTabText(index, tab_titles[tab.objectName()])
+        self.workflowExpandedCheck.setText(
+            self._t("collapse_transfer")
+            if self.workflowExpandedCheck.isChecked()
+            else self._t("expand_transfer")
+        )
+        if self._analysis_result is None:
+            self.findingSummaryLabel.setText(self._t("finding_count", count=0))
+            self._set_default_detail_texts()
+        else:
+            self._render_findings(self._analysis_result.findings)
+            self._update_analysis_assessment(self._analysis_result)
+            self._render_workflow()
+
+    def _set_default_detail_texts(self) -> None:
+        defaults = {
+            "frameDetailTabText": self._t("select_frame"),
+            "isotpDetailTabText": self._t("no_isotp"),
+            "udsDetailTabText": self._t("no_uds"),
+            "sessionDetailTabText": self._t("no_session"),
+            "evidenceDetailTabText": self._t("select_evidence"),
+        }
+        for object_name, value in defaults.items():
+            label = self.findChild(QLabel, object_name)
+            if label is not None:
+                label.setText(value)
+
+    def _update_analysis_assessment(self, result: AnalysisResult) -> None:
+        stats = result.report_data.get("input_stats", {}) if isinstance(result.report_data, dict) else {}
+        reasons: list[str] = []
+        ambiguous_count = int(stats.get("ambiguous_count", 0) or 0)
+        unsupported_count = int(stats.get("unsupported_count", 0) or 0)
+        completeness = str((stats.get("trace_quality") or {}).get("completeness", "unknown"))
+        if ambiguous_count:
+            reasons.append(self._t("ambiguous_reason", count=ambiguous_count))
+        if unsupported_count:
+            reasons.append(self._t("unsupported_reason", count=unsupported_count))
+        if completeness not in {"verified", "assumed"}:
+            reasons.append(self._t("coverage_reason", value=completeness))
+        if any(finding.needs_normative_confirmation for finding in result.findings):
+            reasons.append(self._t("manual_review"))
+        if any(
+            finding.detail.get("match_status") == "orphan_negative_response"
+            for finding in result.findings
+        ):
+            reasons.append(self._t("orphan_reason"))
+        self._manual_review_reason = " ".join(reasons)
+        self.ambiguousLabel.setVisible(bool(reasons))
+        self.ambiguousLabel.setText(
+            self._t("manual_reason", reason=self._manual_review_reason)
+            if reasons
+            else ""
+        )
+        if not result.findings:
+            self.findingSummaryLabel.setText(
+                self._t("finding_count", count=0) + "\n" + self._t("no_rule_reason")
+            )
+        elif reasons:
+            self.findingSummaryLabel.setText(
+                self._t("finding_count", count=len(result.findings))
+                + " · "
+                + self._t("manual_review")
+            )
+        else:
+            self.findingSummaryLabel.setText(
+                self._t("finding_count", count=len(result.findings))
+            )
+
+    def _workflow_status(self, status_key: str) -> str:
+        return {
+            "positive": self._t("positive"),
+            "negative": self._t("negative"),
+            "no_response": self._t("no_response"),
+            "functional": self._t("functional_step"),
+        }.get(status_key, status_key)
+
+    def _workflow_addressing(self, value: str) -> str:
+        return self._t("functional_addressing") if value == "functional" else self._t("physical")
+
+    def _collapse_transfer_steps(self, steps: Sequence[dict]) -> list[dict]:
+        collapsed: list[dict] = []
+        transfer_group: list[dict] = []
+
+        def flush() -> None:
+            if not transfer_group:
+                return
+            first = transfer_group[0]
+            last = transfer_group[-1]
+            payload_bytes = sum(
+                int((item.get("fields") or {}).get("transfer_data_length", 0) or 0)
+                for item in transfer_group
+            )
+            bsc_values = [item.get("block_seq") for item in transfer_group if item.get("block_seq") is not None]
+            collapsed.append(
+                {
+                    **first,
+                    "ts_end": last.get("ts_end", first.get("ts_start", 0.0)),
+                    "status_key": "negative"
+                    if any(item.get("status_key") == "negative" for item in transfer_group)
+                    else "positive",
+                    "detail": (
+                        f"0x36 TransferData · count={len(transfer_group)} · "
+                        f"payload_bytes={payload_bytes} · "
+                        f"BSC={bsc_values[0]:02X}..{bsc_values[-1]:02X}"
+                        if bsc_values
+                        else f"0x36 TransferData · count={len(transfer_group)} · payload_bytes={payload_bytes}"
+                    ),
+                    "evidence_frame_refs": tuple(
+                        ref
+                        for item in (first, last)
+                        for ref in item.get("evidence_frame_refs", ())
+                    ),
+                }
+            )
+            transfer_group.clear()
+
+        for step in steps:
+            if step.get("sid") == 0x36:
+                transfer_group.append(step)
+            else:
+                flush()
+                collapsed.append(step)
+        flush()
+        return collapsed
+
+    @Slot(int)
+    def _render_workflow(self, _state: int | None = None) -> None:
+        if not hasattr(self, "workflowDetailText"):
+            return
+        steps = self._workflow_steps
+        if not steps:
+            self.workflowDetailText.setPlainText(self._t("workflow_empty"))
+            return
+        displayed = steps if self.workflowExpandedCheck.isChecked() else self._collapse_transfer_steps(steps)
+        lines: list[str] = []
+        for step in displayed:
+            status = self._workflow_status(str(step.get("status_key", "")))
+            addressing = self._workflow_addressing(str(step.get("addressing", "physical")))
+            lines.append(
+                self._t(
+                    "workflow_step",
+                    index=step.get("step_index", 0),
+                    time=float(step.get("ts_start", 0.0)),
+                    addressing=addressing,
+                    status=status,
+                )
+            )
+            lines.append(f"  {step.get('detail', '')}")
+            refs = ", ".join(str(ref) for ref in step.get("evidence_frame_refs", ()))
+            if refs:
+                lines.append(f"  {self._t('frame', value=refs)}")
+        self.workflowDetailText.setPlainText("\n".join(lines))
 
     @Slot()
     def _toggle_theme(self) -> None:
@@ -233,7 +465,8 @@ class MainWindow(QMainWindow):
         conversation_layout = QVBoxLayout(conversation_panel)
         conversation_layout.setContentsMargins(0, 0, 0, 0)
         conversation_layout.setSpacing(4)
-        conversation_heading = QLabel("Conversations / 会话", conversation_panel)
+        self.conversationHeading = QLabel(conversation_panel)
+        conversation_heading = self.conversationHeading
         conversation_heading.setObjectName("panelHeading")
         conversation_layout.addWidget(conversation_heading)
         self.conversationTree = QTreeView(conversation_panel)
@@ -250,7 +483,8 @@ class MainWindow(QMainWindow):
         frame_layout = QVBoxLayout(frame_panel)
         frame_layout.setContentsMargins(0, 0, 0, 0)
         frame_layout.setSpacing(4)
-        frame_heading = QLabel("CAN Frames / CAN 帧", frame_panel)
+        self.frameHeading = QLabel(frame_panel)
+        frame_heading = self.frameHeading
         frame_heading.setObjectName("panelHeading")
         frame_layout.addWidget(frame_heading)
         self._build_frame_filter_bar(frame_panel, frame_layout)
@@ -274,10 +508,7 @@ class MainWindow(QMainWindow):
         self.frameDelegate.set_dark_mode(self._dark_mode)
         self.frameTable.setItemDelegate(self.frameDelegate)
         self._configure_frame_columns()
-        self.emptyCenterLabel = QLabel(
-            "Open an ASC/BLF trace to begin / 请打开 ASC/BLF Trace 开始分析",
-            frame_panel,
-        )
+        self.emptyCenterLabel = QLabel(frame_panel)
         self.emptyCenterLabel.setObjectName("emptyCenterState")
         self.emptyCenterLabel.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.emptyCenterLabel.setWordWrap(True)
@@ -295,7 +526,8 @@ class MainWindow(QMainWindow):
         finding_panel_layout = QVBoxLayout(finding_panel)
         finding_panel_layout.setContentsMargins(0, 0, 0, 0)
         finding_panel_layout.setSpacing(4)
-        finding_heading = QLabel("FINDINGS / 发现", finding_panel)
+        self.findingHeading = QLabel(finding_panel)
+        finding_heading = self.findingHeading
         finding_heading.setObjectName("panelHeading")
         finding_panel_layout.addWidget(finding_heading)
         self.findingSummaryLabel = QLabel("No findings / 未发现", finding_panel)
@@ -342,11 +574,25 @@ class MainWindow(QMainWindow):
         self.detailTabs.setObjectName("detailTabs")
         self.detailTabs.setMinimumHeight(180)
         self.detailTabs.setMaximumHeight(350)
-        self._add_detail_tab("frameDetailTab", "Frame Details / 帧详情", "Select a frame / 请选择一帧")
-        self._add_detail_tab("isotpDetailTab", "ISO-TP", "No ISO-TP detail / 暂无 ISO-TP 详情")
-        self._add_detail_tab("udsDetailTab", "UDS", "No UDS detail / 暂无 UDS 详情")
-        self._add_detail_tab("sessionDetailTab", "Session / 会话", "No session detail / 暂无会话详情")
-        self._add_detail_tab("evidenceDetailTab", "Evidence / 证据", "Select evidence / 请选择证据")
+        self._add_detail_tab("frameDetailTab", "", "")
+        self._add_detail_tab("isotpDetailTab", "ISO-TP", "")
+        self._add_detail_tab("udsDetailTab", "UDS", "")
+        self._add_detail_tab("sessionDetailTab", "", "")
+        self._add_detail_tab("evidenceDetailTab", "", "")
+        workflow_tab = QWidget(self.detailTabs)
+        workflow_tab.setObjectName("workflowDetailTab")
+        self.workflowDetailTab = workflow_tab
+        workflow_layout = QVBoxLayout(workflow_tab)
+        self.workflowExpandedCheck = QCheckBox(workflow_tab)
+        self.workflowExpandedCheck.setObjectName("workflowExpandedCheck")
+        workflow_layout.addWidget(self.workflowExpandedCheck)
+        self.workflowDetailText = QTextEdit(workflow_tab)
+        self.workflowDetailText.setObjectName("workflowDetailTabText")
+        self.workflowDetailText.setReadOnly(True)
+        self.workflowDetailText.setLineWrapMode(QTextEdit.LineWrapMode.NoWrap)
+        workflow_layout.addWidget(self.workflowDetailText)
+        self.workflowExpandedCheck.stateChanged.connect(self._render_workflow)
+        self.detailTabs.addTab(workflow_tab, "")
         root_splitter.setSizes([620, 240])
         self._rootSplitter = root_splitter
         self.setCentralWidget(root_splitter)
@@ -357,13 +603,14 @@ class MainWindow(QMainWindow):
 
     def _build_frame_filter_bar(self, parent: QWidget, layout: QVBoxLayout) -> None:
         bar = QWidget(parent)
+        self.frameFilterBar = bar
         bar.setObjectName("frameFilterBar")
         bar_layout = QHBoxLayout(bar)
         bar_layout.setContentsMargins(4, 0, 4, 2)
         bar_layout.setSpacing(6)
-        filter_label = QLabel("Filter / 筛选", bar)
-        filter_label.setObjectName("filterLabel")
-        bar_layout.addWidget(filter_label)
+        self.filterLabel = QLabel(bar)
+        self.filterLabel.setObjectName("filterLabel")
+        bar_layout.addWidget(self.filterLabel)
         self.frameSearch = QLineEdit(bar)
         self.frameSearch.setObjectName("frameSearch")
         self.frameSearch.setPlaceholderText("Search CAN ID / Data / UDS…")
@@ -387,6 +634,11 @@ class MainWindow(QMainWindow):
         ):
             checkbox.setChecked(True)
             bar_layout.addWidget(checkbox)
+        self.directionFunctionalCheck = QCheckBox("Func", bar)
+        self.directionFunctionalCheck.setObjectName("directionFunctionalCheck")
+        self.directionFunctionalCheck.setChecked(True)
+        self.directionFunctionalCheck.setToolTip("Functional addressing / 功能寻址")
+        bar_layout.addWidget(self.directionFunctionalCheck)
         self.showCfCheck = QCheckBox("Show CF", bar)
         self.showCfCheck.setObjectName("showCfCheck")
         self.showCfCheck.setChecked(True)
@@ -410,6 +662,7 @@ class MainWindow(QMainWindow):
             self.directionTesterCheck,
             self.directionEcuCheck,
             self.directionOtherCheck,
+            self.directionFunctionalCheck,
             self.showCfCheck,
         ):
             checkbox.stateChanged.connect(self._apply_frame_filters)
@@ -446,6 +699,7 @@ class MainWindow(QMainWindow):
                 ("tester->ecu", self.directionTesterCheck),
                 ("ecu->tester", self.directionEcuCheck),
                 ("other", self.directionOtherCheck),
+                ("functional", self.directionFunctionalCheck),
             )
             if checkbox.isChecked()
         }
@@ -473,13 +727,13 @@ class MainWindow(QMainWindow):
 
     def _build_status_bar(self) -> None:
         status = self.statusBar()
-        self.statusFrameCount = QLabel("Frames / 帧: 0", status)
+        self.statusFrameCount = QLabel(status)
         self.statusFrameCount.setObjectName("statusFrameCount")
-        self.statusFindingCount = QLabel("Findings / 发现: 0", status)
+        self.statusFindingCount = QLabel(status)
         self.statusFindingCount.setObjectName("statusFindingCount")
         self.statusState = QLabel("EMPTY", status)
         self.statusState.setObjectName("statusState")
-        self.statusChannel = QLabel("CH / 通道: —", status)
+        self.statusChannel = QLabel(status)
         self.statusChannel.setObjectName("statusChannel")
         status.addPermanentWidget(self.statusFrameCount)
         status.addPermanentWidget(self.statusFindingCount)
@@ -506,6 +760,8 @@ class MainWindow(QMainWindow):
         self.settingsButton.setEnabled(state not in {"LOADING", "ANALYZING"})
         self.emptyCenterLabel.setVisible(state in {"EMPTY", "LOADING", "ANALYZING"})
         self.errorLabel.setVisible(state == "ERROR")
+        self.frameHeading.setVisible(state != "EMPTY")
+        self.frameFilterBar.setVisible(state in {"READY", "RESULT"})
         self.frameTable.setVisible(state not in {"EMPTY", "ERROR", "LOADING"})
         if state != "RESULT":
             self.ambiguousLabel.setVisible(False)
@@ -516,12 +772,13 @@ class MainWindow(QMainWindow):
 
         self._bundle = bundle
         self._analysis_result = None
+        self._workflow_steps = []
         self.frameModel.set_data(bundle.frames, bundle.frame_annotations, bundle.quality.start_ts)
         self.conversationModel.set_summaries(bundle.conversation_summaries)
         self.findingModel.set_findings(())
         self._render_findings(())
-        self.statusFrameCount.setText(f"Frames / 帧: {len(bundle.frames)}")
-        self.statusFindingCount.setText("Findings / 发现: 0")
+        self.statusFrameCount.setText(tr("frames_status", self._language, count=len(bundle.frames)))
+        self.statusFindingCount.setText(tr("findings_status", self._language, count=0))
         self._update_channel_status(bundle)
         self.ambiguousLabel.setVisible(False)
         self.set_state("READY", force=True)
@@ -531,16 +788,19 @@ class MainWindow(QMainWindow):
 
         self._analysis_result = result
         self._bundle = result.bundle
+        self._workflow_steps = list(result.workflow_steps or result.report_data.get("workflow", []))
         annotations = result.frame_annotations or result.bundle.frame_annotations
         self.frameModel.set_data(result.bundle.frames, annotations, result.bundle.quality.start_ts)
         self.conversationModel.set_summaries(result.conversation_summaries or result.bundle.conversation_summaries)
         self.findingModel.set_findings(result.findings)
         self._render_findings(result.findings)
-        self.statusFrameCount.setText(f"Frames / 帧: {len(result.bundle.frames)}")
-        self.statusFindingCount.setText(f"Findings / 发现: {len(result.findings)}")
+        self.statusFrameCount.setText(tr("frames_status", self._language, count=len(result.bundle.frames)))
+        self.statusFindingCount.setText(tr("findings_status", self._language, count=len(result.findings)))
         self._update_channel_status(result.bundle)
         input_stats = result.report_data.get("input_stats", {}) if isinstance(result.report_data, dict) else {}
         self.ambiguousLabel.setVisible(bool(input_stats.get("ambiguous")))
+        self._update_analysis_assessment(result)
+        self._render_workflow()
         self.set_state("RESULT", force=True)
 
     # ---------- asynchronous interaction / 异步交互 ----------
@@ -548,7 +808,7 @@ class MainWindow(QMainWindow):
         start = self._settings.value("ui/last_open_dir", "")
         path, _ = QFileDialog.getOpenFileName(
             self,
-            "Open trace / 打开 Trace",
+            self._t("open_dialog"),
             str(start),
             "Trace files (*.asc *.blf);;ASC (*.asc);;BLF (*.blf);;All files (*)",
         )
@@ -564,6 +824,7 @@ class MainWindow(QMainWindow):
         self._active_path = str(path)
         self._bundle = None
         self._analysis_result = None
+        self._workflow_steps = []
         self.frameModel.set_data((), {}, 0.0)
         self.conversationModel.set_summaries(())
         self.findingModel.set_findings(())
@@ -604,7 +865,7 @@ class MainWindow(QMainWindow):
         start = self._settings.value("ui/last_open_dir", "flashreport-report.md")
         path, _ = QFileDialog.getSaveFileName(
             self,
-            "Export report / 导出报告",
+            self._t("export_dialog"),
             str(start),
             "Markdown (*.md);;JSON (*.json)",
         )
@@ -619,57 +880,57 @@ class MainWindow(QMainWindow):
         self.export_files(md_path, json_path)
 
     def _open_settings_dialog(self) -> None:
-        dialog = ConfigDialog(self._config, self._settings, self)
+        dialog = ConfigDialog(self._config, self._settings, self._language, self)
         dialog.configSaved.connect(self._on_config_saved)
         dialog.exec()
 
     @Slot(object)
     def _on_config_saved(self, config: AppConfig) -> None:
         self._config = config
-        self.statusBar().showMessage("Configuration updated / 配置已更新", 4000)
+        self.statusBar().showMessage("Configuration updated" if self._language == "en" else "配置已更新", 4000)
 
     @Slot()
     def _on_load_started(self) -> None:
         self._begin_busy_interval()
-        self.emptyCenterLabel.setText("Loading trace… / 正在加载 Trace…")
+        self.emptyCenterLabel.setText(self._t("loading"))
         self.set_state("LOADING")
         self.loadStarted.emit()
 
     @Slot(object)
     def _on_load_finished(self, bundle: object) -> None:
         if not isinstance(bundle, TraceBundle):
-            self._show_error("Invalid loader result / 加载器返回结果无效")
+            self._show_error(self._t("invalid_load"))
             return
         self.set_bundle(bundle)
         if self._active_path:
             self._settings.setValue("ui/last_open_dir", str(Path(self._active_path).parent))
-        self.statusBar().showMessage("Trace loaded / Trace 已加载", 4000)
+        self.statusBar().showMessage(self._t("trace_loaded"), 4000)
         self.loadFinished.emit(bundle)
 
     @Slot(str)
     def _on_load_failed(self, message: str) -> None:
-        self._show_error(f"Unable to load trace / 无法加载 Trace:\n{message}")
+        self._show_error(self._t("load_error", message=message))
         self.loadFailed.emit(message)
 
     @Slot()
     def _on_analysis_started(self) -> None:
         self._begin_busy_interval()
-        self.emptyCenterLabel.setText("Analyzing… / 正在分析…")
+        self.emptyCenterLabel.setText(self._t("analyzing"))
         self.set_state("ANALYZING")
         self.analysisStarted.emit()
 
     @Slot(object)
     def _on_analysis_finished(self, result: object) -> None:
         if not isinstance(result, AnalysisResult):
-            self._show_error("Invalid analysis result / 分析结果无效")
+            self._show_error(self._t("invalid_analysis"))
             return
         self.set_analysis_result(result)
-        self.statusBar().showMessage("Analysis completed / 分析完成", 4000)
+        self.statusBar().showMessage(self._t("analysis_completed"), 4000)
         self.analysisFinished.emit(result)
 
     @Slot(str)
     def _on_analysis_failed(self, message: str) -> None:
-        self._show_error(f"Analysis failed / 分析失败:\n{message}")
+        self._show_error(self._t("analysis_error", message=message))
         self.analysisFailed.emit(message)
 
     @Slot()
@@ -679,23 +940,24 @@ class MainWindow(QMainWindow):
         self.openButton.setEnabled(False)
         self.analyzeButton.setEnabled(False)
         self.exportButton.setEnabled(False)
-        self.statusBar().showMessage("Exporting report… / 正在导出报告…")
+        self.statusBar().showMessage(self._t("exporting"))
         self.exportStarted.emit()
 
     @Slot(object)
     def _on_export_finished(self, value: object) -> None:
         self._exporting = False
         self.set_state("RESULT")
-        self.statusBar().showMessage("Report exported / 报告已导出", 5000)
+        self.statusBar().showMessage(self._t("exported"), 5000)
         self.exportFinished.emit(value)
 
     @Slot(str)
     def _on_export_failed(self, message: str) -> None:
         self._exporting = False
-        self._show_error(f"Export failed / 导出失败:\n{message}")
+        self._show_error(self._t("export_error", message=message))
         self.exportFailed.emit(message)
 
     def _show_error(self, message: str) -> None:
+        self._last_error_message = message
         self.errorLabel.setText(message)
         self.ambiguousLabel.setVisible(False)
         self.findingModel.set_findings(())
@@ -715,7 +977,7 @@ class MainWindow(QMainWindow):
 
     def _update_channel_status(self, bundle: TraceBundle) -> None:
         channels = ", ".join(str(channel) for channel in bundle.quality.source_channels) or "—"
-        self.statusChannel.setText(f"CH / 通道: {channels}")
+        self.statusChannel.setText(tr("channel_status", self._language, channels=channels))
 
     def _clear_finding_cards(self) -> None:
         while self.findingListLayout.count():
@@ -730,22 +992,19 @@ class MainWindow(QMainWindow):
     def _render_findings(self, findings: Sequence[Finding]) -> None:
         self._clear_finding_cards()
         self.findingSummaryLabel.setText(
-            f"{len(findings):,} findings / {len(findings):,} 条发现"
+            self._t("finding_count", count=f"{len(findings):,}")
             if findings
-            else "No findings / 未发现"
+            else self._t("finding_count", count=0)
         )
         if not findings:
-            empty = QLabel("No protocol deviations found / 未发现协议偏差", self.findingListWidget)
+            empty = QLabel(self._t("no_findings"), self.findingListWidget)
             empty.setObjectName("emptyState")
             empty.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
             self.findingListLayout.addWidget(empty)
             self.findingListLayout.addStretch(1)
             return
         if len(findings) > self._finding_card_limit:
-            self.findingSummaryLabel.setText(
-                f"{len(findings):,} findings / {len(findings):,} 条发现 · "
-                "select one to focus evidence / 选择一条以定位证据"
-            )
+            self.findingSummaryLabel.setText(self._t("finding_focus", count=f"{len(findings):,}"))
             self.findingListLayout.addWidget(self.findingListView)
             self.findingListView.show()
             self.findingListView.setCurrentIndex(self.findingModel.index(-1, 0))
@@ -761,20 +1020,24 @@ class MainWindow(QMainWindow):
         card.setFrameShape(QFrame.Shape.StyledPanel)
         layout = QVBoxLayout(card)
         layout.setContentsMargins(10, 8, 10, 8)
-        title = QLabel(f"{finding.finding_id} / {finding.layer}", card)
+        title = QLabel(self._t("finding_title", id=finding.finding_id, layer=finding.layer), card)
         title.setWordWrap(True)
         title.setStyleSheet("font-weight: 600;")
         layout.addWidget(title)
         meta = QLabel(
-            f"Confidence / 置信度: {finding.confidence} · "
-            f"Side / 责任侧: {finding.suspected_side} · "
-            f"t={finding.deviation_ts:.6f}s",
+            f"{self._t('confidence', value=finding.confidence)} · "
+            f"{self._t('side', value=finding.suspected_side)} · "
+            f"{self._t('deviation', value=finding.deviation_ts)}",
             card,
         )
         meta.setObjectName("secondaryText")
         meta.setWordWrap(True)
         layout.addWidget(meta)
-        observed = QLabel(f"Observed / 观测: {finding.observed}\nExpected / 期望: {finding.expected}", card)
+        observed = QLabel(
+            f"{self._t('observed', value=finding.observed)}\n"
+            f"{self._t('expected', value=finding.expected)}",
+            card,
+        )
         observed.setWordWrap(True)
         layout.addWidget(observed)
         for index, evidence in enumerate(finding.evidence):
@@ -786,18 +1049,33 @@ class MainWindow(QMainWindow):
         row.setObjectName(f"evidenceItem_{finding.finding_id}_{index}")
         row_layout = QHBoxLayout(row)
         row_layout.setContentsMargins(0, 2, 0, 2)
-        summary = QLabel(getattr(evidence, "summary", "Evidence / 证据"), row)
+        summary_text = getattr(evidence, "summary", self._t("evidence"))
+        if getattr(evidence, "type", None) == "frame":
+            summary_text += "\n" + self._t(
+                "frame_line",
+                line=getattr(evidence, "line_no", "?"),
+                time=float(getattr(evidence, "ts", 0.0)),
+                can_id=f"{getattr(evidence, 'can_id', 0):X}",
+            )
+        elif getattr(evidence, "type", None) == "absence_window":
+            summary_text += "\n" + self._t(
+                "interval",
+                start=float(getattr(evidence, "ts_start", 0.0)),
+                end=float(getattr(evidence, "ts_end", 0.0)),
+                count=int(getattr(evidence, "matched_frame_count", 0)),
+            )
+        summary = QLabel(summary_text, row)
         summary.setWordWrap(True)
         row_layout.addWidget(summary, 1)
         button = QPushButton(row)
         if getattr(evidence, "type", None) == "frame":
-            button.setText("Jump / 跳转")
+            button.setText(self._t("jump"))
             button.setObjectName(f"evidenceJump_{finding.finding_id}_{index}")
             button.clicked.connect(
                 lambda _checked=False, item=evidence: self.jump_to_frame(item, finding=finding)
             )
         else:
-            button.setText("Show / 查看")
+            button.setText(self._t("show"))
             button.setObjectName(f"evidenceShow_{finding.finding_id}_{index}")
             button.clicked.connect(
                 lambda _checked=False, item=evidence: self.show_interval(item, finding=finding)
@@ -813,9 +1091,10 @@ class MainWindow(QMainWindow):
         self.directionTesterCheck.setChecked(True)
         self.directionEcuCheck.setChecked(True)
         self.directionOtherCheck.setChecked(True)
+        self.directionFunctionalCheck.setChecked(True)
         self.showCfCheck.setChecked(True)
         self.statusBar().showMessage(
-            "Filters reset to show evidence / 已清除筛选以显示证据", 4000
+            self._t("evidence") + " · " + self._t("show"), 4000
         )
 
     def _set_finding_evidence_detail(self, finding: Finding, evidence: object) -> None:
@@ -824,21 +1103,23 @@ class MainWindow(QMainWindow):
             return
         evidence_type = getattr(evidence, "type", "evidence")
         location = (
-            f"Frame / 帧: {getattr(evidence, 'frame_ref', 'unknown')}"
+            self._t("location_frame", value=getattr(evidence, "frame_ref", "unknown"))
             if evidence_type == "frame"
-            else f"Interval / 区间: {getattr(evidence, 'ts_start', 0.0):.6f}s – "
-            f"{getattr(evidence, 'ts_end', 0.0):.6f}s"
+            else self._t(
+                "location_interval",
+                value=float(getattr(evidence, "ts_start", 0.0)),
+                value_end=float(getattr(evidence, "ts_end", 0.0)),
+            )
         )
         detail.setText(
-            f"Finding / 发现: {finding.finding_id} ({finding.layer})\n"
-            f"Category / 类别: {finding.category}\n"
-            f"Deviation / 偏差时刻: {finding.deviation_ts:.6f}s\n"
-            f"Side / 责任侧: {finding.suspected_side} · "
-            f"Confidence / 置信度: {finding.confidence}\n"
-            f"Observed / 观测: {finding.observed}\n"
-            f"Expected / 期望: {finding.expected}\n"
+            f"{self._t('finding_context', id=finding.finding_id)} ({finding.layer})\n"
+            f"{self._t('confidence', value=finding.confidence)} · "
+            f"{self._t('side', value=finding.suspected_side)}\n"
+            f"{self._t('deviation', value=finding.deviation_ts)}\n"
+            f"{self._t('observed', value=finding.observed)}\n"
+            f"{self._t('expected', value=finding.expected)}\n"
             f"{location}\n"
-            f"Evidence / 证据: {getattr(evidence, 'summary', '')}"
+            f"{self._t('evidence')}: {getattr(evidence, 'summary', '')}"
         )
 
     def jump_to_frame(self, evidence: object, *, finding: Finding | None = None) -> bool:
@@ -909,14 +1190,14 @@ class MainWindow(QMainWindow):
         detail = self.findChild(QLabel, "evidenceDetailTabText")
         if detail is not None:
             detail.setText(
-                f"Finding / 发现: {getattr(finding, 'finding_id', 'evidence')}\n"
-                f"Observed / 观测: {getattr(finding, 'observed', '')}\n"
-                f"Expected / 期望: {getattr(finding, 'expected', '')}\n"
-                f"Absence window / 缺失区间: {start:.6f}s – {end:.6f}s\n"
-                f"Expected role / 期望方向: {getattr(evidence, 'expected_role', 'unknown')}\n"
-                f"Expected kind / 期望类型: {getattr(evidence, 'expected_kind', 'unknown')}\n"
-                f"Matched frames / 命中帧数: {getattr(evidence, 'matched_frame_count', len(matching_rows))}\n"
-                f"Coverage OK / 覆盖完整: {getattr(evidence, 'trace_coverage_ok', None)}\n"
+                f"{self._t('finding_context', id=getattr(finding, 'finding_id', 'evidence'))}\n"
+                f"{self._t('observed', value=getattr(finding, 'observed', ''))}\n"
+                f"{self._t('expected', value=getattr(finding, 'expected', ''))}\n"
+                f"{self._t('location_interval', value=start, value_end=end)}\n"
+                f"{self._t('expected_role', value=getattr(evidence, 'expected_role', 'unknown'))}\n"
+                f"{self._t('expected_kind', value=getattr(evidence, 'expected_kind', 'unknown'))}\n"
+                f"{self._t('matched_frames', value=getattr(evidence, 'matched_frame_count', len(matching_rows)))}\n"
+                f"{self._t('coverage', value=getattr(evidence, 'trace_coverage_ok', None))}\n"
                 f"{getattr(evidence, 'summary', '')}"
             )
         self.detailTabs.setCurrentWidget(self.evidenceDetailTab)
@@ -948,17 +1229,92 @@ class MainWindow(QMainWindow):
         detail = self.findChild(QLabel, "frameDetailTabText")
         if detail is None:
             return
+        data_hex = " ".join(f"{byte:02X}" for byte in frame.data)
+        direction = getattr(annotation, "direction", "other")
+        isotp_summary = getattr(annotation, "isotp_summary", "") or "—"
+        uds_summary = getattr(annotation, "uds_summary", "") or "—"
+        addressing = getattr(annotation, "addressing_mode", "unknown")
+        uds_details = getattr(annotation, "uds_details", {}) or {}
+        detail_lines = [
+            self._t("service", value=uds_details.get("service_name") or "—"),
+            self._t("subfunction", value=(
+                f"0x{uds_details['subfunction']:02X}"
+                if uds_details.get("subfunction") is not None
+                else "—"
+            )),
+            self._t("did", value=(
+                f"0x{uds_details['did']:04X}"
+                if uds_details.get("did") is not None
+                else "—"
+            )),
+            self._t("bsc", value=(
+                f"0x{uds_details['block_seq']:02X}"
+                if uds_details.get("block_seq") is not None
+                else "—"
+            )),
+            self._t("nrc", value=(
+                f"0x{uds_details['nrc']:02X} ({uds_details.get('nrc_name') or 'unknownNRC'})"
+                if uds_details.get("nrc") is not None
+                else "—"
+            )),
+            self._t("session", value=uds_details.get("session") or "—"),
+        ]
+        if uds_details.get("read_data") is not None:
+            detail_lines.append(self._t("read_data", value=uds_details["read_data"] or "—"))
+        if uds_details.get("write_data") is not None:
+            detail_lines.append(self._t("write_data", value=uds_details["write_data"] or "—"))
+        if uds_details.get("start_address") is not None:
+            detail_lines.append(
+                self._t("start_address", value=f"0x{uds_details['start_address']:X}")
+            )
+        if uds_details.get("transfer_length") is not None:
+            detail_lines.append(
+                self._t("transfer_length", value=f"0x{uds_details['transfer_length']:X}")
+            )
+        if uds_details.get("routine_id") is not None:
+            detail_lines.append(
+                self._t("routine_id", value=f"0x{uds_details['routine_id']:04X}")
+            )
+            detail_lines.append(
+                self._t("parameters", value=uds_details.get("routine_parameters") or "—")
+            )
         detail.setText(
-            f"Frame / 帧: {frame.frame_ref}\n"
-            f"Time / 时间: {frame.ts_display} ({frame.ts_seconds:.6f}s)\n"
-            f"CH / 通道: {frame.channel}\n"
-            f"CAN ID: {frame.can_id:X}\n"
-            f"DLC: {frame.dlc}\n"
-            f"Data / 数据: {' '.join(f'{byte:02X}' for byte in frame.data)}\n"
-            f"Direction / 方向: {getattr(annotation, 'direction', 'other')}\n"
-            f"ISO-TP: {getattr(annotation, 'isotp_summary', '') or '—'}\n"
-            f"UDS: {getattr(annotation, 'uds_summary', '') or '—'}"
+            f"{self._t('frame', value=frame.frame_ref)}\n"
+            f"{self._t('time', value=f'{frame.ts_display} ({frame.ts_seconds:.6f}s)')}\n"
+            f"{self._t('channel', value=frame.channel if frame.channel is not None else '—')}\n"
+            f"{self._t('can_id', value=f'{frame.can_id:X}')}\n"
+            f"{self._t('dlc', value=frame.dlc)}\n"
+            f"{self._t('data', value=data_hex)}\n"
+            f"{self._t('direction', value=direction)}\n"
+            f"{self._t('addressing', value=addressing)}\n"
+            f"{self._t('isotp', value=isotp_summary)}\n"
+            f"{self._t('uds', value=uds_summary)}\n"
+            + "\n".join(detail_lines)
         )
+        isotp_label = self.findChild(QLabel, "isotpDetailTabText")
+        if isotp_label is not None:
+            isotp_label.setText(
+                f"{self._t('frame', value=frame.frame_ref)}\n"
+                f"{self._t('isotp', value=isotp_summary)}\n"
+                f"{self._t('direction', value=direction)}\n"
+                f"{self._t('addressing', value=addressing)}\n"
+                f"{self._t('data_label', value=data_hex)}"
+            )
+        uds_label = self.findChild(QLabel, "udsDetailTabText")
+        if uds_label is not None:
+            uds_label.setText(
+                f"{self._t('frame', value=frame.frame_ref)}\n"
+                f"{self._t('uds', value=uds_summary)}\n"
+                + "\n".join(detail_lines)
+                + f"\n{self._t('raw_uds', value=uds_details.get('raw') or '—')}"
+            )
+        session_label = self.findChild(QLabel, "sessionDetailTabText")
+        if session_label is not None:
+            session_label.setText(
+                f"{self._t('session', value=uds_details.get('session') or '—')}\n"
+                f"{self._t('addressing', value=addressing)}\n"
+                f"{self._t('direction', value=direction)}"
+            )
 
     def _restore_ui_state(self) -> None:
         geometry = self._settings.value("ui/main_window_geometry")

@@ -22,6 +22,7 @@ def test_config_schema_is_valid_json_and_has_frozen_contract() -> None:
         "ISO-TP-004",
         "ISO-TP-005",
         "UDS-001",
+        "UDS-002",
         "FLASH-001",
     }
 
@@ -39,4 +40,3 @@ def test_unknown_config_field_is_rejected() -> None:
     result = validate_config(data)
     assert not result.ok
     assert any("unknown field unexpected" in error for error in result.errors)
-

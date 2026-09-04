@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import fields, is_dataclass
 from typing import Any, Iterable
 
+from .. import __version__
 from ..config import timeout_provenance
 from ..isotp.validator import validate_conversation
 from ..models import (
@@ -703,7 +704,7 @@ def analyze_bundle(
     report_data = {
         "schema_version": "1.1",
         "tool": "udsflashreport",
-        "version": "0.1.0.dev0",
+        "version": __version__,
         "source_file": bundle.path,
         "input_stats": _json_value(input_stats),
         "findings": [finding_to_dict(finding) for finding in findings],

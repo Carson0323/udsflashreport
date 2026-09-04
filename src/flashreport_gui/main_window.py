@@ -34,6 +34,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from flashreport_core.api import __author__, __email__, __version__
 from flashreport_core.models import AnalysisResult, AppConfig, Evidence, Finding, RawFrame, TraceBundle
 
 from .controllers import AnalysisController, ExportController
@@ -87,7 +88,7 @@ class MainWindow(QMainWindow):
     def __init__(self, settings: QSettings | None = None, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("mainWindow")
-        self.setWindowTitle("FlashReport / UDS 刷写 Trace 分析")
+        self.setWindowTitle(f"FlashReport / UDS 刷写 Trace 分析 · v{__version__}")
         self.resize(1440, 900)
         self.setMinimumSize(1100, 650)
         self._settings = settings or QSettings()
@@ -160,6 +161,9 @@ class MainWindow(QMainWindow):
         self.toolbar.addWidget(self.brandIcon)
         self.brandLabel = QLabel(self.toolbar)
         self.brandLabel.setObjectName("brandLabel")
+        self.brandLabel.setToolTip(
+            f"FlashReport v{__version__}\nAuthor: {__author__} <{__email__}>"
+        )
         self.toolbar.addWidget(self.brandLabel)
         self.openButton = self._toolbar_button("Open / 打开", "openButton")
         self.analyzeButton = self._toolbar_button("Analyze / 分析", "analyzeButton")
@@ -218,8 +222,16 @@ class MainWindow(QMainWindow):
     def _retranslate_ui(self) -> None:
         """Update GUI chrome without translating protocol abbreviations/data."""
 
-        self.setWindowTitle(self._t("app_title"))
-        self.brandLabel.setText(self._t("brand"))
+        self.setWindowTitle(f"{self._t('app_title')} · v{__version__}")
+        self.brandLabel.setText(f"{self._t('brand')} · v{__version__}")
+        self.brandLabel.setToolTip(
+            self._t(
+                "author_info",
+                author=__author__,
+                email=__email__,
+                version=__version__,
+            )
+        )
         self.openButton.setText(self._t("open"))
         self.analyzeButton.setText(self._t("analyze"))
         self.exportButton.setText(self._t("export"))

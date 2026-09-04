@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from . import __author__, __email__, __version__
 from .config import (
     config_from_dict,
     config_to_dict,

@@ -136,6 +136,8 @@ def build(output_path: Path) -> dict[str, Any]:
         str(spec_path),
         "--runtime-hook",
         str(ROOT / "tools" / "pyinstaller_runtime_hook.py"),
+        "--version-file",
+        str(ROOT / "packaging" / "version_info.txt"),
         str(ROOT / "tools" / "packaging_gui_entry.py"),
     ]
     build_result = _run(command, env=_packaging_environment())

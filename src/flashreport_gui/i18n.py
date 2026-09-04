@@ -9,6 +9,7 @@ _TEXT = {
     "zh": {
         "app_title": "FlashReport / UDS 刷写 Trace 分析",
         "brand": "FlashReport / Trace 分析",
+        "author_info": "作者：{author} · 邮箱：{email} · 版本：v{version}",
         "open": "打开",
         "analyze": "分析",
         "export": "导出",
@@ -142,6 +143,7 @@ _TEXT = {
     "en": {
         "app_title": "FlashReport / UDS Flash Trace Analysis",
         "brand": "FlashReport / Trace Analysis",
+        "author_info": "Author: {author} · Email: {email} · Version: v{version}",
         "open": "Open",
         "analyze": "Analyze",
         "export": "Export",

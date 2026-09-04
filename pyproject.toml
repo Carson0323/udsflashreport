@@ -4,11 +4,14 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "udsflashreport"
-version = "0.1.0.dev0"
+version = "1.0.0"
 description = "确定性的 UDS/ISO-TP 刷写 Trace 故障归因引擎 / Deterministic UDS/ISO-TP flash trace fault attribution engine"
 readme = "README.md"
 requires-python = ">=3.11,<3.12"
 license = { file = "LICENSE" }
+authors = [
+    { name = "chaofan", email = "archaofan@gmail.com" },
+]
 dependencies = [
     "PySide6>=6.6,<6.13",
     "python-can>=4.5",

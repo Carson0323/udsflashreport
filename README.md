@@ -28,8 +28,8 @@ Launch the GUI with `flashreport-gui` (or `python -m flashreport_gui.app`).
 
 ## 项目状态 | Project Status
 
-当前处于 M8 发布前候选构建阶段：M7 Windows 打包和私有语料回归已完成，等待人工发布前验收。
-Currently at the M8 pre-release candidate stage: M7 Windows packaging and private-corpus regression are complete, pending human pre-release review.
+当前已发布 V1.0.0：M7 Windows 打包、启动自检和私有语料回归均已完成；发布包为 PyInstaller onedir，可在未安装 Python 的 Windows 环境中直接运行。
+V1.0.0 is released: M7 Windows packaging, startup smoke testing, and private-corpus regression are complete. The release package is a PyInstaller onedir build that runs directly on Windows without a Python installation.
 
 M2 已支持 SF/FF/CF/FC 事件化、SN 校验、CF/STmin/BS/WAIT/OVFLW/超时诊断，以及按双向 conversation 进行 Transport Validator 校验。UDS 解码、会话、归因和报告将在后续里程碑完成。
 M2 supports SF/FF/CF/FC eventization, sequence-number checks, CF/STmin/BS/WAIT/OVFLW/timeout diagnostics, and bidirectional conversation validation. UDS decoding, sessions, attribution, and reports are scheduled for later milestones.

@@ -1,5 +1,21 @@
 # Changelog
 
+## V1.0.2 — 2026-09-05
+
+面向使用者的稳定性修复版本。
+User-facing stability and usability release.
+
+- 修复 CAN/发现/证据/流程详情中的时间戳显示，统一为相对首帧时间。
+  Restored capture-relative timestamps across CAN frames, findings, evidence, and workflow details.
+- 修复证据“查看”定位，缺失窗口会高亮锚点帧和区间边界帧。
+  Improved evidence navigation by highlighting the anchor and window-boundary frames for absence windows.
+- 流程详情支持换行，补充 UDS 服务/子服务说明；RoutineControl 参数保留原始字节格式。
+  Added wrapped workflow details and UDS service/subservice descriptions; RoutineControl parameters remain raw spaced bytes.
+- 恢复 CAN 列拖动调整，并修复浅色/深色主题下勾选标记不可见的问题。
+  Restored resizable CAN columns and fixed invisible checkbox marks in both themes.
+- 修复 Windows wheel 隔离校验，并提供无需 Python 的 Windows 单文件 EXE。
+  Fixed Windows wheel isolation validation and provided a Python-free single-file Windows EXE.
+
 ## V1.0.1 — 2026-09-05
 
 面向开发/测试人员的正确性与交付可靠性修复版本。

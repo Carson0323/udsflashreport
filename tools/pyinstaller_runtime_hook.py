@@ -27,20 +27,27 @@ def _register_directory(path: Path) -> None:
 
 
 if getattr(sys, "frozen", False):
+    executable_root = Path(sys.executable).resolve().parent
     bundle_roots = {
-        Path(getattr(sys, "_MEIPASS", "")),
-        Path(sys.executable).resolve().parent,
-        Path(sys.executable).resolve().parent / "_internal",
+        Path(sys._MEIPASS) if getattr(sys, "_MEIPASS", None) else None,
+        executable_root,
+        executable_root / "_internal",
     }
-    for bundle_root in bundle_roots:
-        pyside_root = bundle_root / "PySide6"
-        if (pyside_root / "Qt6Core.dll").is_file():
+    for bundle_root in (root for root in bundle_roots if root is not None):
+        # Onefile and onedir layouts differ slightly between PyInstaller and
+        # PySide6 hook versions. Register both the package root and its
+        # conventional _internal/PySide6 locations before QtCore is imported.
+        pyside_roots = {
+            bundle_root / "PySide6",
+            bundle_root / "_internal" / "PySide6",
+        }
+        for pyside_root in pyside_roots:
             _register_directory(bundle_root)
+            _register_directory(bundle_root / "_internal")
             _register_directory(pyside_root)
-            _register_directory(bundle_root / "shiboken6")
-            _register_directory(pyside_root / "plugins")
+            _register_directory(pyside_root.parent / "shiboken6")
             plugins = pyside_root / "plugins"
-            if plugins.is_dir():
+            _register_directory(plugins)
+            if (pyside_root / "Qt6Core.dll").is_file() and plugins.is_dir():
                 os.environ.setdefault("QT_PLUGIN_PATH", str(plugins))
                 os.environ.setdefault("QT_QPA_PLATFORM_PLUGIN_PATH", str(plugins / "platforms"))
-            break

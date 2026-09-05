@@ -11,4 +11,4 @@ artifacts/
 private_corpus/
 .idea/
 .vscode/
-
+.codex-internal/

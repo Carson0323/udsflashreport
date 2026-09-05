@@ -1,7 +1,17 @@
 from __future__ import annotations
 
 from PySide6.QtCore import QSettings, Qt
-from PySide6.QtWidgets import QLabel, QFrame, QPushButton, QScrollArea, QTableView, QTableWidget, QTabWidget, QTreeView
+from PySide6.QtWidgets import (
+    QFrame,
+    QHeaderView,
+    QLabel,
+    QPushButton,
+    QScrollArea,
+    QTableView,
+    QTableWidget,
+    QTabWidget,
+    QTreeView,
+)
 
 from flashreport_core.models import (
     AnalysisResult,
@@ -338,3 +348,51 @@ def test_collapsed_transfer_rows_keep_visible_step_numbers_sequential(qtbot, tmp
     table = window.workflowDetailTable
     assert [table.item(row, 0).text() for row in range(table.rowCount())] == ["1", "2", "3"]
     assert "TransferData 分段：2" in table.item(1, 4).text()
+
+
+def test_workflow_description_wraps_and_routine_keeps_raw_parameters_only(qtbot, tmp_path) -> None:
+    window = MainWindow(QSettings(str(tmp_path / "workflow-detail.ini"), QSettings.Format.IniFormat))
+    qtbot.addWidget(window)
+    bundle = _bundle()
+    result = AnalysisResult(
+        bundle=bundle,
+        findings=[],
+        first_deviation=None,
+        report_data={},
+        frame_annotations=bundle.frame_annotations,
+        conversation_summaries=bundle.conversation_summaries,
+        workflow_steps=[
+            {
+                "step_index": 1,
+                "ts_start": 1.0,
+                "addressing": "physical",
+                "sid": 0x31,
+                "service_name": "RoutineControl",
+                "subfunction": 0x01,
+                "fields": {
+                    "routine_id": 0xFF00,
+                    "routine_parameters": "44 00 60 00",
+                    "routine_ascii": "D.`.",
+                },
+                "status_key": "positive",
+            }
+        ],
+    )
+    window.set_analysis_result(result)
+
+    item = window.workflowDetailTable.item(0, 4)
+    assert item is not None
+    assert "参数：44 00 60 00" in item.text()
+    assert "ASCII" not in item.text()
+    assert "\n" in item.text()
+    assert window.workflowDetailTable.horizontalHeader().sectionResizeMode(4) == QHeaderView.ResizeMode.Interactive
+
+
+def test_can_frame_columns_remain_user_resizable(qtbot, tmp_path) -> None:
+    window = MainWindow(QSettings(str(tmp_path / "frame-columns.ini"), QSettings.Format.IniFormat))
+    qtbot.addWidget(window)
+
+    header = window.frameTable.horizontalHeader()
+    assert header.sectionResizeMode(3) == QHeaderView.ResizeMode.Interactive
+    assert header.sectionResizeMode(7) == QHeaderView.ResizeMode.Interactive
+    assert header.sectionResizeMode(9) == QHeaderView.ResizeMode.Interactive

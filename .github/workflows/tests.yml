@@ -21,5 +21,9 @@ jobs:
       - run: python -m pip wheel . --no-deps --wheel-dir dist/wheels
       - shell: pwsh
         run: |
-          $wheel = Get-ChildItem dist/wheels/udsflashreport-*.whl | Select-Object -First 1
+          $wheel = Get-ChildItem -Path dist/wheels -Filter 'udsflashreport-*.whl' -File | Select-Object -First 1
+          if ($null -eq $wheel) {
+            throw 'No udsflashreport wheel was produced under dist/wheels.'
+          }
+          Write-Host "Checking wheel: $($wheel.FullName)"
           python tools/check_distribution.py $wheel.FullName

@@ -235,6 +235,12 @@ class MainWindow(QMainWindow):
     def _t(self, key: str, **values: object) -> str:
         return tr(key, self._language, **values)
 
+    def _display_ts(self, value: float) -> float:
+        """Return the capture-relative timestamp used throughout the GUI."""
+
+        start_ts = self._bundle.quality.start_ts if self._bundle is not None else 0.0
+        return float(value) - float(start_ts)
+
     def _retranslate_ui(self) -> None:
         """Update GUI chrome without translating protocol abbreviations/data."""
 
@@ -439,7 +445,6 @@ class MainWindow(QMainWindow):
             if fields.get("routine_id") is not None:
                 parts.append(self._t("routine_id", value=f"0x{int(fields['routine_id']):04X}"))
             parts.append(self._t("parameters", value=fields.get("routine_parameters") or "—"))
-            parts.append(self._t("ascii", value=fields.get("routine_ascii") or "—"))
         elif sid == 0x2E and fields.get("write_data") is not None:
             parts.append(self._t("write_data", value=fields.get("write_data") or "—"))
             parts.append(self._t("write_ascii", value=fields.get("write_ascii") or "—"))
@@ -448,7 +453,7 @@ class MainWindow(QMainWindow):
             parts.append(self._t("read_ascii", value=response_fields.get("read_ascii") or "—"))
         if sid not in {0x22, 0x2E, 0x31, 0x34, 0x36} and fields.get("service_data"):
             parts.append(self._t("data", value=fields["service_data"]))
-        return " · ".join(parts) or str(step.get("detail", "—"))
+        return "\n".join(parts) or str(step.get("detail", "—"))
 
     def _collapse_transfer_steps(self, steps: Sequence[dict]) -> list[dict]:
         collapsed: list[dict] = []
@@ -532,7 +537,7 @@ class MainWindow(QMainWindow):
             refs = ", ".join(str(ref) for ref in step.get("evidence_frame_refs", ())) or "—"
             values = (
                 str(step_label),
-                f"{float(step.get('ts_start', 0.0)):.6f}",
+                f"{self._display_ts(float(step.get('ts_start', 0.0))):.6f}",
                 addressing,
                 service,
                 self._workflow_description(step),
@@ -847,7 +852,9 @@ class MainWindow(QMainWindow):
             if section == 10:
                 self.frameTable.setColumnHidden(section, True)
                 continue
-            header.setSectionResizeMode(section, QHeaderView.ResizeMode.Fixed)
+            # Keep the useful initial widths while allowing the operator to
+            # widen Data/UDS details or narrow the short CH/DLC columns.
+            header.setSectionResizeMode(section, QHeaderView.ResizeMode.Interactive)
             header.resizeSection(section, width)
         header.setMinimumSectionSize(32)
 
@@ -935,6 +942,7 @@ class MainWindow(QMainWindow):
         self._workflow_steps = []
         self.frameModel.set_data(bundle.frames, bundle.frame_annotations, bundle.quality.start_ts)
         self.conversationModel.set_summaries(bundle.conversation_summaries)
+        self.findingModel.set_start_ts(bundle.quality.start_ts)
         self.findingModel.set_findings(())
         self._render_findings(())
         self._render_workflow()
@@ -953,6 +961,7 @@ class MainWindow(QMainWindow):
         annotations = result.frame_annotations or result.bundle.frame_annotations
         self.frameModel.set_data(result.bundle.frames, annotations, result.bundle.quality.start_ts)
         self.conversationModel.set_summaries(result.conversation_summaries or result.bundle.conversation_summaries)
+        self.findingModel.set_start_ts(result.bundle.quality.start_ts)
         self.findingModel.set_findings(result.findings)
         self._render_findings(result.findings)
         self.statusFrameCount.setText(tr("frames_status", self._language, count=len(result.bundle.frames)))
@@ -989,6 +998,7 @@ class MainWindow(QMainWindow):
         self._workflow_steps = []
         self.frameModel.set_data((), {}, 0.0)
         self.conversationModel.set_summaries(())
+        self.findingModel.set_start_ts(0.0)
         self.findingModel.set_findings(())
         self._render_findings(())
         self._render_workflow()
@@ -1197,8 +1207,8 @@ class MainWindow(QMainWindow):
         meta = QLabel(
             f"{self._t('confidence', value=finding.confidence)} · "
             f"{self._t('side', value=side_label(finding.suspected_side, self._language))} · "
-            f"{self._t('deviation', value=finding.deviation_ts)} · "
-            f"{self._t('detected', value=finding.detected_ts)}",
+            f"{self._t('deviation', value=self._display_ts(finding.deviation_ts))} · "
+            f"{self._t('detected', value=self._display_ts(finding.detected_ts))}",
             card,
         )
         meta.setObjectName("secondaryText")
@@ -1227,14 +1237,14 @@ class MainWindow(QMainWindow):
             summary_text += "\n" + self._t(
                 "frame_line",
                 line=getattr(evidence, "line_no", "?"),
-                time=float(getattr(evidence, "ts", 0.0)),
+                time=self._display_ts(float(getattr(evidence, "ts", 0.0))),
                 can_id=f"{getattr(evidence, 'can_id', 0):X}",
             )
         elif getattr(evidence, "type", None) == "absence_window":
             summary_text += "\n" + self._t(
                 "interval",
-                start=float(getattr(evidence, "ts_start", 0.0)),
-                end=float(getattr(evidence, "ts_end", 0.0)),
+                start=self._display_ts(float(getattr(evidence, "ts_start", 0.0))),
+                end=self._display_ts(float(getattr(evidence, "ts_end", 0.0))),
                 count=int(getattr(evidence, "matched_frame_count", 0)),
             )
         summary = QLabel(summary_text, row)
@@ -1280,16 +1290,16 @@ class MainWindow(QMainWindow):
             if evidence_type == "frame"
             else self._t(
                 "location_interval",
-                value=float(getattr(evidence, "ts_start", 0.0)),
-                value_end=float(getattr(evidence, "ts_end", 0.0)),
+                value=self._display_ts(float(getattr(evidence, "ts_start", 0.0))),
+                value_end=self._display_ts(float(getattr(evidence, "ts_end", 0.0))),
             )
         )
         detail.setText(
             f"{self._t('finding_context', id=finding.finding_id)} ({finding.layer})\n"
             f"{self._t('confidence', value=finding.confidence)} · "
             f"{self._t('side', value=side_label(finding.suspected_side, self._language))}\n"
-            f"{self._t('deviation', value=finding.deviation_ts)}\n"
-            f"{self._t('detected', value=finding.detected_ts)}\n"
+            f"{self._t('deviation', value=self._display_ts(finding.deviation_ts))}\n"
+            f"{self._t('detected', value=self._display_ts(finding.detected_ts))}\n"
             f"{self._t('observed', value=format_finding_text(finding.finding_id, 'observed', finding.observed, self._language, detail=finding.detail, service=finding.service))}\n"
             f"{self._t('expected', value=format_finding_text(finding.finding_id, 'expected', finding.expected, self._language, detail=finding.detail, service=finding.service))}\n"
             f"{location}\n"
@@ -1375,8 +1385,27 @@ class MainWindow(QMainWindow):
                     break
 
         rows_to_focus = list(matching_rows)
-        if not rows_to_focus and anchor_row is not None:
-            rows_to_focus = [anchor_row]
+        boundary_row = None
+        if not rows_to_focus:
+            # An absence window has no expected frame to select.  Highlight
+            # the request/anchor and the last captured row in the deadline
+            # window so the operator sees both ends of the observed interval.
+            if anchor_row is not None:
+                rows_to_focus.append(anchor_row)
+            candidates = [
+                row
+                for row in range(self.frameModel.rowCount())
+                if (frame := self.frameModel.frame_at(row)) is not None
+                and start <= frame.ts_seconds <= end
+            ]
+            if candidates:
+                boundary_row = candidates[-1]
+                if boundary_row not in rows_to_focus:
+                    rows_to_focus.append(boundary_row)
+        elif anchor_row is not None and anchor_row not in rows_to_focus:
+            # Keep the triggering frame visible together with any matching
+            # response frames when a rule has both kinds of evidence.
+            rows_to_focus.insert(0, anchor_row)
         selection = self.frameTable.selectionModel()
         if selection is not None:
             selection.clearSelection()
@@ -1391,6 +1420,13 @@ class MainWindow(QMainWindow):
                     for row in rows_to_focus
                 ]
             valid = [item for item in mapped if item.isValid()]
+            if valid:
+                # Establish the viewport anchor without changing the
+                # selection; setting the current index after selecting rows
+                # can collapse an ExtendedSelection back to one row.
+                selection.setCurrentIndex(
+                    valid[0], QItemSelectionModel.SelectionFlag.NoUpdate
+                )
             for item in valid:
                 selection.select(
                     item,
@@ -1398,7 +1434,6 @@ class MainWindow(QMainWindow):
                     | QItemSelectionModel.SelectionFlag.Rows,
                 )
             if valid:
-                self.frameTable.setCurrentIndex(valid[0])
                 self.frameTable.scrollTo(valid[0], QTableView.ScrollHint.PositionAtCenter)
         detail = self.findChild(QLabel, "evidenceDetailTabText")
         if detail is not None:
@@ -1440,15 +1475,19 @@ class MainWindow(QMainWindow):
                 lines.extend(
                     [
                         self._t("side", value=side_label(finding.suspected_side, self._language)),
-                        self._t("deviation", value=finding.deviation_ts),
-                        self._t("detected", value=finding.detected_ts),
+                        self._t("deviation", value=self._display_ts(finding.deviation_ts)),
+                        self._t("detected", value=self._display_ts(finding.detected_ts)),
                         self._t("observed", value=observed),
                         self._t("expected", value=expected),
                     ]
                 )
             lines.extend(
                 [
-                    self._t("location_interval", value=start, value_end=end),
+                    self._t(
+                        "location_interval",
+                        value=self._display_ts(float(start)),
+                        value_end=self._display_ts(float(end)),
+                    ),
                     self._t("expected_role", value=direction_label(expected_role, self._language)),
                     self._t("expected_kind", value=kind or "—"),
                     self._t(
@@ -1469,6 +1508,10 @@ class MainWindow(QMainWindow):
             )
             if anchor is not None:
                 lines.append(self._t("anchor_frame", value=getattr(anchor, "frame_ref", "—")))
+            if boundary_row is not None:
+                boundary_frame = self.frameModel.frame_at(boundary_row)
+                if boundary_frame is not None:
+                    lines.append(self._t("boundary_frame", value=boundary_frame.frame_ref))
             lines.append(
                 f"{self._t('evidence')}: "
                 f"{evidence_summary(getattr(evidence, 'summary', ''), self._language)}"
@@ -1572,14 +1615,11 @@ class MainWindow(QMainWindow):
             detail_lines.append(
                 self._t("parameters", value=uds_details.get("routine_parameters") or "—")
             )
-            detail_lines.append(
-                self._t("ascii", value=uds_details.get("routine_ascii") or "—")
-            )
         if uds_details.get("service_data") is not None:
             detail_lines.append(self._t("data", value=uds_details["service_data"] or "—"))
         detail.setText(
             f"{self._t('frame', value=frame.frame_ref)}\n"
-            f"{self._t('time', value=f'{frame.ts_display} ({frame.ts_seconds:.6f}s)')}\n"
+            f"{self._t('time', value=f'{self._display_ts(frame.ts_seconds):.6f}s')}\n"
             f"{self._t('channel', value=frame.channel if frame.channel is not None else '—')}\n"
             f"{self._t('can_id', value=f'{frame.can_id:X}')}\n"
             f"{self._t('dlc', value=frame.dlc)}\n"

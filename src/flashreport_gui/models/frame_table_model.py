@@ -198,9 +198,10 @@ class FrameTableModel(QAbstractTableModel):
         if column == 0:
             return str(index.row() + 1)
         if column == 1:
-            # Display source-aligned absolute epoch seconds.  Δt remains the
-            # separate relative interval column.
-            return f"{frame.ts_seconds:.6f}"
+            # Match the capture viewer's relative timeline.  The absolute
+            # source timestamp remains available through the frame object and
+            # is used internally for rule calculations.
+            return f"{frame.ts_seconds - self._start_ts:.6f}"
         if column == 2:
             delta = frame.ts_seconds - previous.ts_seconds if previous is not None else 0.0
             return f"{delta:.6f}"

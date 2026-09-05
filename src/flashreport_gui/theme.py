@@ -105,15 +105,11 @@ def build_stylesheet(tokens: ThemeTokens = LIGHT_TOKENS) -> str:
     QCheckBox::indicator {{
         width: 16px;
         height: 16px;
-        border: 1px solid {tokens.text_secondary};
+        border: 2px solid {tokens.text_secondary};
         border-radius: 2px;
-        background: {tokens.panel};
     }}
     QCheckBox::indicator:hover {{ border: 2px solid {tokens.text_primary}; }}
-    QCheckBox::indicator:checked {{
-        border: 2px solid {tokens.text_primary};
-        background: {tokens.selection};
-    }}
+    QCheckBox::indicator:checked {{ border: 2px solid {tokens.text_primary}; }}
     QLabel#languageLabel, QLabel#filterLabel, QLabel#dataLegend {{
         background: transparent;
         color: {tokens.text_secondary};

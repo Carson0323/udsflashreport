@@ -105,7 +105,6 @@ def _step_detail(request: UdsMessage, response: UdsMessage | None) -> str:
     if request.sid == 0x31:
         parts.append(f"RoutineID={_hex(detail['routine_id'], 4)}")
         parts.append(f"params={detail['routine_parameters'] or '—'}")
-        parts.append(f"ASCII={detail.get('routine_ascii') or '—'}")
     if detail.get("service_data"):
         parts.append(f"data={detail['service_data']}")
     if response is None:

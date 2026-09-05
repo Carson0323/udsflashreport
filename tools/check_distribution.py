@@ -34,12 +34,13 @@ def check(wheel: Path) -> None:
 import json
 import sys
 from pathlib import Path
-sys.path.insert(0, sys.argv[1])
+package_root = Path(sys.argv[1]).resolve()
+sys.path.insert(0, str(package_root))
 import flashreport_core
 from flashreport_core.api import load_trace, analyze_trace, default_config, export_report
 from flashreport_core.spec_utils import resolve_runtime_resource
-assert Path(flashreport_core.__file__).is_relative_to(Path(sys.argv[1]))
-assert resolve_runtime_resource("spec/findings.yaml").is_relative_to(Path(sys.argv[1]))
+assert Path(flashreport_core.__file__).resolve().is_relative_to(package_root)
+assert resolve_runtime_resource("spec/findings.yaml").resolve().is_relative_to(package_root)
 cfg = default_config()
 samples = sorted(Path(sys.argv[2]).glob("*.asc"))
 assert samples

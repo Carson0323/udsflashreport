@@ -22,6 +22,7 @@ class FindingListModel(QAbstractListModel):
         super().__init__(parent)
         self._findings = list(findings or ())
         self._language = "en"
+        self._start_ts = 0.0
 
     def set_findings(self, findings: Sequence[Finding]) -> None:
         self.beginResetModel()
@@ -33,6 +34,18 @@ class FindingListModel(QAbstractListModel):
         if language == self._language:
             return
         self._language = language
+        if self.rowCount():
+            self.dataChanged.emit(
+                self.index(0, 0),
+                self.index(self.rowCount() - 1, 0),
+                [Qt.ItemDataRole.DisplayRole],
+            )
+
+    def set_start_ts(self, start_ts: float) -> None:
+        start_ts = float(start_ts)
+        if start_ts == self._start_ts:
+            return
+        self._start_ts = start_ts
         if self.rowCount():
             self.dataChanged.emit(
                 self.index(0, 0),
@@ -55,7 +68,7 @@ class FindingListModel(QAbstractListModel):
         if role == Qt.ItemDataRole.DisplayRole:
             return (
                 f"{finding.finding_id} · {finding.layer} · "
-                f"t={finding.deviation_ts:.6f}s · "
+                f"t={finding.deviation_ts - self._start_ts:.6f}s · "
                 f"{side_label(finding.suspected_side, self._language)} · "
                 f"{format_finding_text(finding.finding_id, 'observed', finding.observed, self._language, detail=finding.detail, service=finding.service)} → "
                 f"{format_finding_text(finding.finding_id, 'expected', finding.expected, self._language, detail=finding.detail, service=finding.service)}"

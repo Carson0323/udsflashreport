@@ -70,6 +70,12 @@ def icon_for(name: str, tokens: ThemeTokens = LIGHT_TOKENS, size: int = 20) -> Q
 def build_stylesheet(tokens: ThemeTokens = LIGHT_TOKENS) -> str:
     """Build QSS from theme tokens, keeping business colors centralized."""
 
+    checked_icon = (
+        Path(__file__).resolve().parent
+        / "assets"
+        / "icons"
+        / ("checkbox_checked_dark.svg" if tokens == DARK_TOKENS else "checkbox_checked_light.svg")
+    ).as_posix()
     return f"""
     QWidget {{
         background: {tokens.background};
@@ -109,7 +115,10 @@ def build_stylesheet(tokens: ThemeTokens = LIGHT_TOKENS) -> str:
         border-radius: 2px;
     }}
     QCheckBox::indicator:hover {{ border: 2px solid {tokens.text_primary}; }}
-    QCheckBox::indicator:checked {{ border: 2px solid {tokens.text_primary}; }}
+    QCheckBox::indicator:checked {{
+        border: 2px solid {tokens.text_primary};
+        image: url("{checked_icon}");
+    }}
     QLabel#languageLabel, QLabel#filterLabel, QLabel#dataLegend {{
         background: transparent;
         color: {tokens.text_secondary};

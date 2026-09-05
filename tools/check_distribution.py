@@ -24,6 +24,8 @@ def check(wheel: Path) -> None:
                 "flashreport_core/resources/spec/report.schema.json",
                 "flashreport_core/resources/spec/config.schema.json",
                 "flashreport_gui/assets/icons/flashreport.svg",
+                "flashreport_gui/assets/icons/checkbox_checked_light.svg",
+                "flashreport_gui/assets/icons/checkbox_checked_dark.svg",
             }
             assert required <= set(archive.namelist()), "wheel is missing runtime resources"
             for name in archive.namelist():

@@ -50,9 +50,9 @@ def test_frame_table_has_frozen_columns_and_api_annotation_projection(qtbot) -> 
 
     assert model.columnCount() == 11
     assert model.headerData(0, Qt.Orientation.Horizontal) == FRAME_COLUMNS[0]
-    assert model.data(model.index(0, 1)) == "0.000000"
+    assert model.data(model.index(0, 1)) == "10.000000"
     assert model.data(model.index(1, 2)) == "0.125000"
-    assert model.data(model.index(0, 5)) == "tester->ecu"
+    assert model.data(model.index(0, 5)) == "Tester→ECU"
     assert model.data(model.index(0, 8)) == "SF len=2"
     assert model.data(model.index(0, 9)) == "0x10 DiagnosticSessionControl"
     assert model.data(model.index(0, FRAME_COLUMNS.index("Data"))) == "02 10 02"
@@ -95,8 +95,8 @@ def test_frame_model_keeps_chronology_and_filters_direction_and_cf() -> None:
 
     assert model.frame_at(0) is second
     assert model.frame_at(1) is first
-    assert model.data(model.index(0, 1)) == "0.000000"
-    assert model.data(model.index(1, 1)) == "1.000000"
+    assert model.data(model.index(0, 1)) == "1.000000"
+    assert model.data(model.index(1, 1)) == "2.000000"
 
     proxy = FrameFilterProxyModel()
     proxy.setSourceModel(model)

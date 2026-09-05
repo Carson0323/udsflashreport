@@ -223,8 +223,8 @@ def test_selecting_a_frame_populates_all_detail_tabs(qtbot, tmp_path) -> None:
     window.frameTable.setCurrentIndex(window.frameProxyModel.index(0, 0))
 
     assert "SF len=2" in window.findChild(QLabel, "isotpDetailTabText").text()
-    assert "DiagnosticSessionControl" in window.findChild(QLabel, "udsDetailTabText").text()
-    assert "programming" in window.findChild(QLabel, "sessionDetailTabText").text()
+    assert "诊断会话控制" in window.findChild(QLabel, "udsDetailTabText").text()
+    assert "编程会话" in window.findChild(QLabel, "sessionDetailTabText").text()
 
 
 def test_workflow_is_rendered_as_ordered_step_table(qtbot, tmp_path) -> None:
@@ -274,8 +274,67 @@ def test_workflow_is_rendered_as_ordered_step_table(qtbot, tmp_path) -> None:
     assert table is not None
     assert table.rowCount() == 2
     assert table.item(0, 0).text() == "1"
-    assert "RequestDownload" in table.item(0, 3).text()
+    assert "请求下载" in table.item(0, 3).text()
     assert "0x1000" in table.item(0, 4).text()
     assert "synthetic:1" in table.item(0, 6).text()
     assert "DID 字节：12 34" in table.item(1, 4).text()
     assert "写入 ASCII：12" in table.item(1, 4).text()
+
+
+def test_collapsed_transfer_rows_keep_visible_step_numbers_sequential(qtbot, tmp_path) -> None:
+    window = MainWindow(QSettings(str(tmp_path / "workflow-collapse.ini"), QSettings.Format.IniFormat))
+    qtbot.addWidget(window)
+    bundle = _bundle()
+    result = AnalysisResult(
+        bundle=bundle,
+        findings=[],
+        first_deviation=None,
+        report_data={},
+        frame_annotations=bundle.frame_annotations,
+        conversation_summaries=bundle.conversation_summaries,
+        workflow_steps=[
+            {
+                "step_index": 1,
+                "ts_start": 1.0,
+                "addressing": "physical",
+                "sid": 0x34,
+                "service_name": "RequestDownload",
+                "status_key": "positive",
+                "fields": {"start_address": 0x1000, "transfer_length": 0x400},
+            },
+            {
+                "step_index": 200,
+                "ts_start": 2.0,
+                "addressing": "physical",
+                "sid": 0x36,
+                "service_name": "TransferData",
+                "status_key": "positive",
+                "block_seq": 1,
+                "fields": {"transfer_data_length": 0x10},
+            },
+            {
+                "step_index": 201,
+                "ts_start": 3.0,
+                "addressing": "physical",
+                "sid": 0x36,
+                "service_name": "TransferData",
+                "status_key": "positive",
+                "block_seq": 2,
+                "fields": {"transfer_data_length": 0x20},
+            },
+            {
+                "step_index": 202,
+                "ts_start": 4.0,
+                "addressing": "physical",
+                "sid": 0x37,
+                "service_name": "RequestTransferExit",
+                "status_key": "positive",
+                "fields": {},
+            },
+        ],
+    )
+    window.set_analysis_result(result)
+
+    table = window.workflowDetailTable
+    assert [table.item(row, 0).text() for row in range(table.rowCount())] == ["1", "2", "3"]
+    assert "TransferData 分段：2" in table.item(1, 4).text()

@@ -17,8 +17,21 @@ def _first_frame(issue: TransportIssue) -> FrameEvidence | None:
     return next((item for item in issue.evidence if isinstance(item, FrameEvidence)), None)
 
 
+def _anchor_ts(issue: TransportIssue) -> float:
+    """Return the frame where the violation became possible.
+
+    ``TransportIssue.ts`` is the observation/deadline timestamp for absence
+    rules.  The user-facing deviation must instead point to the FF, CTS, or
+    last CF that started the violated waiting interval.
+    """
+
+    frame = _first_frame(issue)
+    return frame.ts if frame is not None else issue.ts
+
+
 def missing_fc_after_ff(issue: TransportIssue, ctx: RuleContext):
     frame = _first_frame(issue)
+    deviation_ts = _anchor_ts(issue)
     role = frame.role if frame is not None else None
     side = receiver_side(role)
     source = ctx.timing.isotp_fc.source
@@ -27,15 +40,20 @@ def missing_fc_after_ff(issue: TransportIssue, ctx: RuleContext):
         finding_id="ISO-TP-001",
         layer="ISO-TP",
         category="missing_fc_after_ff",
-        deviation_ts=issue.ts,
+        deviation_ts=deviation_ts,
         detected_ts=issue.ts,
         observed=issue.observed,
         expected=issue.expected,
         suspected_side=side,
         base_confidence="high",
-        detail={"timeout_ms": ctx.timing.isotp_fc.value_ms, "timing_source": source},
+        detail={
+            "timeout_ms": ctx.timing.isotp_fc.value_ms,
+            "timing_source": source,
+            "anchor_ts": deviation_ts,
+            "deadline_ts": issue.ts,
+        },
         evidence=list(issue.evidence),
-        session=session_at(ctx.sessions, issue.ts),
+        session=session_at(ctx.sessions, deviation_ts),
         timing_source=source,
         window_covered=issue_window_covered(issue),
     )
@@ -51,21 +69,27 @@ def cf_after_cts_missing(issue: TransportIssue, ctx: RuleContext):
         None,
     )
     side = sender_side(window_role)
+    deviation_ts = _anchor_ts(issue)
     source = ctx.timing.isotp_cf.source
     return build_finding(
         ctx=ctx,
         finding_id="ISO-TP-002",
         layer="ISO-TP",
         category="cf_after_cts_missing",
-        deviation_ts=issue.ts,
+        deviation_ts=deviation_ts,
         detected_ts=issue.ts,
         observed=issue.observed,
         expected=issue.expected,
         suspected_side=side,
         base_confidence="high",
-        detail={"timeout_ms": ctx.timing.isotp_cf.value_ms, "timing_source": source},
+        detail={
+            "timeout_ms": ctx.timing.isotp_cf.value_ms,
+            "timing_source": source,
+            "anchor_ts": deviation_ts,
+            "deadline_ts": issue.ts,
+        },
         evidence=list(issue.evidence),
-        session=session_at(ctx.sessions, issue.ts),
+        session=session_at(ctx.sessions, deviation_ts),
         timing_source=source,
         window_covered=issue_window_covered(issue),
     )
@@ -133,21 +157,27 @@ def missing_fc_after_block(issue: TransportIssue, ctx: RuleContext):
     side = sender_side(window_role)
     if side != "unknown":
         side = "ecu" if side == "tester" else "tester"
+    deviation_ts = _anchor_ts(issue)
     source = ctx.timing.isotp_fc.source
     return build_finding(
         ctx=ctx,
         finding_id="ISO-TP-004",
         layer="ISO-TP",
         category="missing_fc_after_block",
-        deviation_ts=issue.ts,
+        deviation_ts=deviation_ts,
         detected_ts=issue.ts,
         observed=issue.observed,
         expected=issue.expected,
         suspected_side=side,
         base_confidence="high",
-        detail={"timeout_ms": ctx.timing.isotp_fc.value_ms, "timing_source": source},
+        detail={
+            "timeout_ms": ctx.timing.isotp_fc.value_ms,
+            "timing_source": source,
+            "anchor_ts": deviation_ts,
+            "deadline_ts": issue.ts,
+        },
         evidence=list(issue.evidence),
-        session=session_at(ctx.sessions, issue.ts),
+        session=session_at(ctx.sessions, deviation_ts),
         timing_source=source,
         window_covered=issue_window_covered(issue),
     )

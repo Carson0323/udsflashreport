@@ -12,6 +12,7 @@ SESSION_NAMES = {
     0x01: "default",
     0x02: "programming",
     0x03: "extended",
+    0x04: "safety_system",
 }
 
 

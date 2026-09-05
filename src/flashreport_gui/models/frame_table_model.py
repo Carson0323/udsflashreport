@@ -10,6 +10,8 @@ from PySide6.QtWidgets import QStyle, QStyleOptionViewItem, QStyledItemDelegate
 
 from flashreport_core.models import FrameAnnotation, RawFrame
 
+from ..i18n import direction_label, format_uds_summary
+
 
 FRAME_COLUMNS = (
     "#",
@@ -65,6 +67,9 @@ class FrameTableModel(QAbstractTableModel):
         self._start_ts = start_ts if start_ts is not None else self._infer_start_ts()
         self._highlight_directions = False
         self._dark_mode = False
+        # Keep the standalone model's historical English default; MainWindow
+        # applies the user's selected language immediately after construction.
+        self._language = "en"
 
     def _infer_start_ts(self) -> float:
         return self._frames[0].ts_seconds if self._frames else 0.0
@@ -85,6 +90,18 @@ class FrameTableModel(QAbstractTableModel):
         self.beginResetModel()
         self._annotations = dict(annotations)
         self.endResetModel()
+
+    def set_language(self, language: str) -> None:
+        language = language if language in {"zh", "en"} else "en"
+        if language == self._language:
+            return
+        self._language = language
+        if self.rowCount():
+            self.dataChanged.emit(
+                self.index(0, 5),
+                self.index(self.rowCount() - 1, 9),
+                [Qt.ItemDataRole.DisplayRole, Qt.ItemDataRole.ToolTipRole],
+            )
 
     def set_direction_highlighting(self, enabled: bool, *, dark_mode: bool = False) -> None:
         """Toggle presentation-only direction backgrounds / 切换方向背景色。"""
@@ -181,7 +198,9 @@ class FrameTableModel(QAbstractTableModel):
         if column == 0:
             return str(index.row() + 1)
         if column == 1:
-            return f"{frame.ts_seconds - self._start_ts:.6f}"
+            # Display source-aligned absolute epoch seconds.  Δt remains the
+            # separate relative interval column.
+            return f"{frame.ts_seconds:.6f}"
         if column == 2:
             delta = frame.ts_seconds - previous.ts_seconds if previous is not None else 0.0
             return f"{delta:.6f}"
@@ -190,7 +209,10 @@ class FrameTableModel(QAbstractTableModel):
         if column == 4:
             return f"{frame.can_id:08X}" if frame.is_extended else f"{frame.can_id:03X}"
         if column == 5:
-            return annotation.direction if annotation is not None else "other"
+            return direction_label(
+                annotation.direction if annotation is not None else "other",
+                self._language,
+            )
         if column == 6:
             return str(frame.dlc)
         if column == 7:
@@ -198,7 +220,13 @@ class FrameTableModel(QAbstractTableModel):
         if column == 8:
             return annotation.isotp_summary if annotation is not None and annotation.isotp_summary else ""
         if column == 9:
-            return annotation.uds_summary if annotation is not None and annotation.uds_summary else ""
+            if annotation is None:
+                return ""
+            return format_uds_summary(
+                annotation.uds_details,
+                self._language,
+                annotation.uds_summary or "",
+            )
         if column == 10:
             return annotation.summary if annotation is not None else "other"
         return None
@@ -343,11 +371,14 @@ class FrameFilterProxyModel(QSortFilterProxyModel):
         source = self.sourceModel()
         if source is None:
             return False
-        direction = source.data(source.index(source_row, 5, source_parent), Qt.ItemDataRole.DisplayRole)
+        annotation = source.data(
+            source.index(source_row, 0, source_parent), ANNOTATION_ROLE
+        )
+        direction = getattr(annotation, "direction", "other")
         if direction not in self._allowed_directions:
             return False
         if self._hide_cf:
-            isotp = source.data(source.index(source_row, 8, source_parent), Qt.ItemDataRole.DisplayRole)
+            isotp = getattr(annotation, "isotp_summary", "")
             if self._is_cf(isotp):
                 return False
         return super().filterAcceptsRow(source_row, source_parent)

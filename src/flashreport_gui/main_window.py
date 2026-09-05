@@ -50,7 +50,21 @@ from .models import (
     FrameTableDelegate,
     FrameTableModel,
 )
-from .i18n import LANGUAGE_CODES, LANGUAGE_LABELS, tr
+from .i18n import (
+    LANGUAGE_CODES,
+    LANGUAGE_LABELS,
+    addressing_label,
+    direction_label,
+    evidence_summary,
+    format_finding_text,
+    format_uds_summary,
+    nrc_label,
+    service_label,
+    session_label,
+    side_label,
+    subfunction_label,
+    tr,
+)
 from .theme import DARK_TOKENS, LIGHT_TOKENS, apply_theme, icon_for
 
 
@@ -214,6 +228,8 @@ class MainWindow(QMainWindow):
             return
         self._language = str(code)
         self._settings.setValue("ui/language", self._language)
+        self.frameModel.set_language(self._language)
+        self.findingModel.set_language(self._language)
         self._retranslate_ui()
 
     def _t(self, key: str, **values: object) -> str:
@@ -362,7 +378,7 @@ class MainWindow(QMainWindow):
         }.get(status_key, status_key)
 
     def _workflow_addressing(self, value: str) -> str:
-        return self._t("functional_addressing") if value == "functional" else self._t("physical")
+        return addressing_label(value, self._language)
 
     def _workflow_description(self, step: dict) -> str:
         """Render protocol fields as a compact, language-aware step description."""
@@ -372,28 +388,53 @@ class MainWindow(QMainWindow):
         response_fields = step.get("response_fields") or {}
         if sid is None:
             return str(step.get("detail", "—"))
-        parts = [f"0x{int(sid):02X} {step.get('service_name') or 'unknown'}"]
+        parts: list[str] = []
         if step.get("subfunction") is not None:
-            parts.append(self._t("subfunction", value=f"0x{int(step['subfunction']):02X}"))
+            subfunction = int(step["subfunction"])
+            parts.append(
+                self._t(
+                    "subfunction_detail",
+                    value=f"0x{subfunction:02X}",
+                    description=subfunction_label(
+                        step.get("service_name"), subfunction, self._language
+                    ),
+                )
+            )
         if step.get("did") is not None:
             parts.append(self._t("did", value=f"0x{int(step['did']):04X}"))
             did_bytes = fields.get("did_bytes") or response_fields.get("did_bytes")
             if did_bytes:
                 parts.append(self._t("did_bytes", value=did_bytes))
+            did_ascii = fields.get("did_ascii") or response_fields.get("did_ascii")
+            if did_ascii:
+                parts.append(self._t("did_ascii", value=did_ascii))
         if sid == 0x34:
             if fields.get("start_address") is not None:
                 parts.append(self._t("start_address", value=f"0x{int(fields['start_address']):X}"))
             if fields.get("transfer_length") is not None:
                 parts.append(self._t("transfer_length", value=f"0x{int(fields['transfer_length']):X}"))
         elif sid == 0x36:
-            if step.get("block_seq") is not None:
-                parts.append(self._t("bsc", value=f"0x{int(step['block_seq']):02X}"))
-            parts.append(
-                self._t(
-                    "transfer_bytes",
-                    value=fields.get("transfer_data_length", 0),
+            if step.get("collapsed_transfer"):
+                bsc_start = step.get("transfer_bsc_start")
+                bsc_end = step.get("transfer_bsc_end")
+                parts.append(
+                    self._t(
+                        "transfer_segments",
+                        count=step.get("transfer_count", 0),
+                        bytes=step.get("transfer_total_bytes", 0),
+                        start=(f"0x{int(bsc_start):02X}" if bsc_start is not None else "—"),
+                        end=(f"0x{int(bsc_end):02X}" if bsc_end is not None else "—"),
+                    )
                 )
-            )
+            else:
+                if step.get("block_seq") is not None:
+                    parts.append(self._t("bsc", value=f"0x{int(step['block_seq']):02X}"))
+                parts.append(
+                    self._t(
+                        "transfer_bytes",
+                        value=fields.get("transfer_data_length", 0),
+                    )
+                )
         elif sid == 0x31:
             if fields.get("routine_id") is not None:
                 parts.append(self._t("routine_id", value=f"0x{int(fields['routine_id']):04X}"))
@@ -407,7 +448,7 @@ class MainWindow(QMainWindow):
             parts.append(self._t("read_ascii", value=response_fields.get("read_ascii") or "—"))
         if sid not in {0x22, 0x2E, 0x31, 0x34, 0x36} and fields.get("service_data"):
             parts.append(self._t("data", value=fields["service_data"]))
-        return " · ".join(parts)
+        return " · ".join(parts) or str(step.get("detail", "—"))
 
     def _collapse_transfer_steps(self, steps: Sequence[dict]) -> list[dict]:
         collapsed: list[dict] = []
@@ -427,6 +468,11 @@ class MainWindow(QMainWindow):
                 {
                     **first,
                     "step_label": f"{first.get('step_index', '?')}–{last.get('step_index', '?')}",
+                    "collapsed_transfer": True,
+                    "transfer_count": len(transfer_group),
+                    "transfer_total_bytes": payload_bytes,
+                    "transfer_bsc_start": bsc_values[0] if bsc_values else None,
+                    "transfer_bsc_end": bsc_values[-1] if bsc_values else None,
                     "ts_end": last.get("ts_end", first.get("ts_start", 0.0)),
                     "status_key": "negative"
                     if any(item.get("status_key") == "negative" for item in transfer_group)
@@ -472,11 +518,14 @@ class MainWindow(QMainWindow):
         self.workflowDetailTable.setVisible(True)
         self.workflowDetailTable.setRowCount(len(displayed))
         for row, step in enumerate(displayed):
-            step_label = step.get("step_label", step.get("step_index", 0))
+            # Displayed rows are always numbered sequentially.  A collapsed
+            # TransferData row is one visible workflow step; its original
+            # segment range is retained in Description.
+            step_label = row + 1
             status = self._workflow_status(str(step.get("status_key", "")))
             addressing = self._workflow_addressing(str(step.get("addressing", "physical")))
             service = (
-                f"0x{int(step['sid']):02X} {step.get('service_name') or 'unknown'}"
+                f"0x{int(step['sid']):02X} {service_label(step.get('service_name'), self._language)}"
                 if step.get("sid") is not None
                 else "—"
             )
@@ -492,6 +541,7 @@ class MainWindow(QMainWindow):
             )
             for column, value in enumerate(values):
                 item = QTableWidgetItem(value)
+                item.setToolTip(value)
                 self.workflowDetailTable.setItem(row, column, item)
             self.workflowDetailTable.resizeRowToContents(row)
 
@@ -529,10 +579,12 @@ class MainWindow(QMainWindow):
 
     def _build_models(self) -> None:
         self.frameModel = FrameTableModel()
+        self.frameModel.set_language(self._language)
         self.frameProxyModel = FrameFilterProxyModel(self)
         self.frameProxyModel.setSourceModel(self.frameModel)
         self.conversationModel = ConversationTreeModel()
         self.findingModel = FindingListModel()
+        self.findingModel.set_language(self._language)
 
     def _build_central_layout(self) -> None:
         root_splitter = QSplitter(Qt.Orientation.Vertical, self)
@@ -688,9 +740,15 @@ class MainWindow(QMainWindow):
         workflow_header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
         workflow_header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
         workflow_header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
-        workflow_header.setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
+        workflow_header.setSectionResizeMode(4, QHeaderView.ResizeMode.Interactive)
         workflow_header.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
-        workflow_header.setSectionResizeMode(6, QHeaderView.ResizeMode.Stretch)
+        workflow_header.setSectionResizeMode(6, QHeaderView.ResizeMode.Interactive)
+        workflow_header.resizeSection(4, 560)
+        workflow_header.resizeSection(6, 220)
+        self.workflowDetailTable.setTextElideMode(Qt.TextElideMode.ElideNone)
+        self.workflowDetailTable.verticalHeader().setSectionResizeMode(
+            QHeaderView.ResizeMode.ResizeToContents
+        )
         self.workflowDetailTable.setSortingEnabled(False)
         workflow_layout.addWidget(self.workflowDetailTable)
         self.workflowExpandedCheck.stateChanged.connect(self._render_workflow)
@@ -1138,16 +1196,17 @@ class MainWindow(QMainWindow):
         layout.addWidget(title)
         meta = QLabel(
             f"{self._t('confidence', value=finding.confidence)} · "
-            f"{self._t('side', value=finding.suspected_side)} · "
-            f"{self._t('deviation', value=finding.deviation_ts)}",
+            f"{self._t('side', value=side_label(finding.suspected_side, self._language))} · "
+            f"{self._t('deviation', value=finding.deviation_ts)} · "
+            f"{self._t('detected', value=finding.detected_ts)}",
             card,
         )
         meta.setObjectName("secondaryText")
         meta.setWordWrap(True)
         layout.addWidget(meta)
         observed = QLabel(
-            f"{self._t('observed', value=finding.observed)}\n"
-            f"{self._t('expected', value=finding.expected)}",
+            f"{self._t('observed', value=format_finding_text(finding.finding_id, 'observed', finding.observed, self._language, detail=finding.detail, service=finding.service))}\n"
+            f"{self._t('expected', value=format_finding_text(finding.finding_id, 'expected', finding.expected, self._language, detail=finding.detail, service=finding.service))}",
             card,
         )
         observed.setWordWrap(True)
@@ -1161,7 +1220,9 @@ class MainWindow(QMainWindow):
         row.setObjectName(f"evidenceItem_{finding.finding_id}_{index}")
         row_layout = QHBoxLayout(row)
         row_layout.setContentsMargins(0, 2, 0, 2)
-        summary_text = getattr(evidence, "summary", self._t("evidence"))
+        summary_text = evidence_summary(
+            getattr(evidence, "summary", self._t("evidence")), self._language
+        )
         if getattr(evidence, "type", None) == "frame":
             summary_text += "\n" + self._t(
                 "frame_line",
@@ -1226,12 +1287,13 @@ class MainWindow(QMainWindow):
         detail.setText(
             f"{self._t('finding_context', id=finding.finding_id)} ({finding.layer})\n"
             f"{self._t('confidence', value=finding.confidence)} · "
-            f"{self._t('side', value=finding.suspected_side)}\n"
+            f"{self._t('side', value=side_label(finding.suspected_side, self._language))}\n"
             f"{self._t('deviation', value=finding.deviation_ts)}\n"
-            f"{self._t('observed', value=finding.observed)}\n"
-            f"{self._t('expected', value=finding.expected)}\n"
+            f"{self._t('detected', value=finding.detected_ts)}\n"
+            f"{self._t('observed', value=format_finding_text(finding.finding_id, 'observed', finding.observed, self._language, detail=finding.detail, service=finding.service))}\n"
+            f"{self._t('expected', value=format_finding_text(finding.finding_id, 'expected', finding.expected, self._language, detail=finding.detail, service=finding.service))}\n"
             f"{location}\n"
-            f"{self._t('evidence')}: {getattr(evidence, 'summary', '')}"
+            f"{self._t('evidence')}: {evidence_summary(getattr(evidence, 'summary', ''), self._language)}"
         )
 
     def jump_to_frame(self, evidence: object, *, finding: Finding | None = None) -> bool:
@@ -1268,49 +1330,151 @@ class MainWindow(QMainWindow):
         return True
 
     def show_interval(self, evidence: object, *, finding: Finding | None = None) -> bool:
-        """Highlight the observed window and explain the absence / 高亮区间并说明缺失。"""
+        """Focus expected evidence, or its anchor frame when the window is empty.
+
+        Selecting every CAN row between two timestamps made an absence Finding
+        appear to point at unrelated traffic.  The window remains visible in
+        the evidence panel, while the frame table focuses only on matching
+        ISO-TP rows or the FF/CTS/last-CF anchor that started the deadline.
+        """
 
         start = getattr(evidence, "ts_start", None)
         end = getattr(evidence, "ts_end", None)
         if start is None or end is None:
             return False
-        matching_rows = []
+        expected_role = str(getattr(evidence, "expected_role", "unknown"))
+        expected_kind = str(getattr(evidence, "expected_kind", "")).upper()
+        expected_kind_token = expected_kind.split()[0] if expected_kind else ""
+        matching_rows: list[int] = []
         for row in range(self.frameModel.rowCount()):
             frame = self.frameModel.frame_at(row)
-            if frame is not None and start <= frame.ts_seconds <= end:
-                matching_rows.append(row)
+            annotation = self.frameModel.annotation_at(row)
+            if frame is None or annotation is None or not (start <= frame.ts_seconds <= end):
+                continue
+            if annotation.direction != expected_role:
+                continue
+            actual_kind = str(annotation.isotp_summary or "").split(" ", 1)[0].upper()
+            if expected_kind_token and actual_kind != expected_kind_token:
+                continue
+            matching_rows.append(row)
+
+        anchor = next(
+            (
+                item
+                for item in (getattr(finding, "evidence", ()) if finding is not None else ())
+                if getattr(item, "type", None) == "frame"
+            ),
+            None,
+        )
+        anchor_row = None
+        if anchor is not None:
+            anchor_ref = getattr(anchor, "frame_ref", None)
+            for row in range(self.frameModel.rowCount()):
+                if self.frameModel.data(self.frameModel.index(row, 0), FrameRefRole) == anchor_ref:
+                    anchor_row = row
+                    break
+
+        rows_to_focus = list(matching_rows)
+        if not rows_to_focus and anchor_row is not None:
+            rows_to_focus = [anchor_row]
         selection = self.frameTable.selectionModel()
         if selection is not None:
             selection.clearSelection()
-            first = self.frameProxyModel.mapFromSource(self.frameModel.index(matching_rows[0], 0)) if matching_rows else None
-            last = self.frameProxyModel.mapFromSource(self.frameModel.index(matching_rows[-1], 0)) if matching_rows else None
-            if first is None or not first.isValid() or last is None or not last.isValid():
+            mapped = [
+                self.frameProxyModel.mapFromSource(self.frameModel.index(row, 0))
+                for row in rows_to_focus
+            ]
+            if rows_to_focus and any(not item.isValid() for item in mapped):
                 self._reset_frame_filters_for_focus()
-                first = self.frameProxyModel.mapFromSource(self.frameModel.index(matching_rows[0], 0)) if matching_rows else None
-                last = self.frameProxyModel.mapFromSource(self.frameModel.index(matching_rows[-1], 0)) if matching_rows else None
-            if first is not None and first.isValid() and last is not None and last.isValid():
+                mapped = [
+                    self.frameProxyModel.mapFromSource(self.frameModel.index(row, 0))
+                    for row in rows_to_focus
+                ]
+            valid = [item for item in mapped if item.isValid()]
+            for item in valid:
                 selection.select(
-                    QItemSelection(first, last),
-                    QItemSelectionModel.SelectionFlag.Select | QItemSelectionModel.SelectionFlag.Rows,
+                    item,
+                    QItemSelectionModel.SelectionFlag.Select
+                    | QItemSelectionModel.SelectionFlag.Rows,
                 )
-            if matching_rows:
-                if first is not None and first.isValid():
-                    self.frameTable.setCurrentIndex(first)
-                    self.frameTable.scrollTo(first, QTableView.ScrollHint.PositionAtCenter)
-                if last is not None and last.isValid():
-                    self.frameTable.scrollTo(last, QTableView.ScrollHint.PositionAtCenter)
+            if valid:
+                self.frameTable.setCurrentIndex(valid[0])
+                self.frameTable.scrollTo(valid[0], QTableView.ScrollHint.PositionAtCenter)
         detail = self.findChild(QLabel, "evidenceDetailTabText")
         if detail is not None:
+            observed = (
+                format_finding_text(
+                    finding.finding_id,
+                    "observed",
+                    finding.observed,
+                    self._language,
+                    detail=finding.detail,
+                    service=finding.service,
+                )
+                if finding is not None
+                else ""
+            )
+            expected = (
+                format_finding_text(
+                    finding.finding_id,
+                    "expected",
+                    finding.expected,
+                    self._language,
+                    detail=finding.detail,
+                    service=finding.service,
+                )
+                if finding is not None
+                else ""
+            )
+            kind = expected_kind
+            if self._language == "zh":
+                kind = {
+                    "FINAL UDS RESPONSE": "最终 UDS 响应",
+                    "FC CTS": "FC CTS",
+                    "CF": "CF",
+                }.get(expected_kind, expected_kind)
+            lines = [
+                self._t("finding_context", id=getattr(finding, "finding_id", "evidence")),
+            ]
+            if finding is not None:
+                lines.extend(
+                    [
+                        self._t("side", value=side_label(finding.suspected_side, self._language)),
+                        self._t("deviation", value=finding.deviation_ts),
+                        self._t("detected", value=finding.detected_ts),
+                        self._t("observed", value=observed),
+                        self._t("expected", value=expected),
+                    ]
+                )
+            lines.extend(
+                [
+                    self._t("location_interval", value=start, value_end=end),
+                    self._t("expected_role", value=direction_label(expected_role, self._language)),
+                    self._t("expected_kind", value=kind or "—"),
+                    self._t(
+                        "matched_frames",
+                        value=getattr(evidence, "matched_frame_count", len(matching_rows)),
+                    ),
+                    self._t(
+                        "coverage",
+                        value=(
+                            ("是" if self._language == "zh" else "yes")
+                            if getattr(evidence, "trace_coverage_ok", None) is True
+                            else ("否" if self._language == "zh" else "no")
+                            if getattr(evidence, "trace_coverage_ok", None) is False
+                            else "—"
+                        ),
+                    ),
+                ]
+            )
+            if anchor is not None:
+                lines.append(self._t("anchor_frame", value=getattr(anchor, "frame_ref", "—")))
+            lines.append(
+                f"{self._t('evidence')}: "
+                f"{evidence_summary(getattr(evidence, 'summary', ''), self._language)}"
+            )
             detail.setText(
-                f"{self._t('finding_context', id=getattr(finding, 'finding_id', 'evidence'))}\n"
-                f"{self._t('observed', value=getattr(finding, 'observed', ''))}\n"
-                f"{self._t('expected', value=getattr(finding, 'expected', ''))}\n"
-                f"{self._t('location_interval', value=start, value_end=end)}\n"
-                f"{self._t('expected_role', value=getattr(evidence, 'expected_role', 'unknown'))}\n"
-                f"{self._t('expected_kind', value=getattr(evidence, 'expected_kind', 'unknown'))}\n"
-                f"{self._t('matched_frames', value=getattr(evidence, 'matched_frame_count', len(matching_rows)))}\n"
-                f"{self._t('coverage', value=getattr(evidence, 'trace_coverage_ok', None))}\n"
-                f"{getattr(evidence, 'summary', '')}"
+                "\n".join(lines)
             )
         self.detailTabs.setCurrentWidget(self.evidenceDetailTab)
         return True
@@ -1342,18 +1506,30 @@ class MainWindow(QMainWindow):
         if detail is None:
             return
         data_hex = " ".join(f"{byte:02X}" for byte in frame.data)
-        direction = getattr(annotation, "direction", "other")
+        direction = direction_label(getattr(annotation, "direction", "other"), self._language)
         isotp_summary = getattr(annotation, "isotp_summary", "") or "—"
-        uds_summary = getattr(annotation, "uds_summary", "") or "—"
-        addressing = getattr(annotation, "addressing_mode", "unknown")
         uds_details = getattr(annotation, "uds_details", {}) or {}
+        uds_summary = format_uds_summary(
+            uds_details,
+            self._language,
+            getattr(annotation, "uds_summary", "") or "",
+        ) or "—"
+        addressing = addressing_label(
+            getattr(annotation, "addressing_mode", "unknown"), self._language
+        )
+        service_name = uds_details.get("service_name")
+        subfunction_value = uds_details.get("subfunction")
         detail_lines = [
-            self._t("service", value=uds_details.get("service_name") or "—"),
-            self._t("subfunction", value=(
-                f"0x{uds_details['subfunction']:02X}"
-                if uds_details.get("subfunction") is not None
-                else "—"
-            )),
+            self._t("service", value=service_label(service_name, self._language) if service_name else "—"),
+            (
+                self._t(
+                    "subfunction_detail",
+                    value=f"0x{int(subfunction_value):02X}",
+                    description=subfunction_label(service_name, subfunction_value, self._language),
+                )
+                if subfunction_value is not None
+                else self._t("subfunction", value="—")
+            ),
             self._t("did", value=(
                 f"0x{uds_details['did']:04X}"
                 if uds_details.get("did") is not None
@@ -1365,14 +1541,16 @@ class MainWindow(QMainWindow):
                 else "—"
             )),
             self._t("nrc", value=(
-                f"0x{uds_details['nrc']:02X} ({uds_details.get('nrc_name') or 'unknownNRC'})"
+                nrc_label(uds_details["nrc"], uds_details.get("nrc_name"), self._language)
                 if uds_details.get("nrc") is not None
                 else "—"
             )),
-            self._t("session", value=uds_details.get("session") or "—"),
+            self._t("session", value=session_label(uds_details.get("session"), self._language)),
         ]
         if uds_details.get("did_bytes") is not None:
             detail_lines.append(self._t("did_bytes", value=uds_details["did_bytes"]))
+        if uds_details.get("did_ascii") is not None:
+            detail_lines.append(self._t("did_ascii", value=uds_details["did_ascii"]))
         if uds_details.get("read_data") is not None:
             detail_lines.append(self._t("read_data", value=uds_details["read_data"] or "—"))
             detail_lines.append(self._t("read_ascii", value=uds_details.get("read_ascii") or "—"))
@@ -1397,6 +1575,8 @@ class MainWindow(QMainWindow):
             detail_lines.append(
                 self._t("ascii", value=uds_details.get("routine_ascii") or "—")
             )
+        if uds_details.get("service_data") is not None:
+            detail_lines.append(self._t("data", value=uds_details["service_data"] or "—"))
         detail.setText(
             f"{self._t('frame', value=frame.frame_ref)}\n"
             f"{self._t('time', value=f'{frame.ts_display} ({frame.ts_seconds:.6f}s)')}\n"
@@ -1427,10 +1607,10 @@ class MainWindow(QMainWindow):
                 + "\n".join(detail_lines)
                 + f"\n{self._t('raw_uds', value=uds_details.get('raw') or '—')}"
             )
-        session_label = self.findChild(QLabel, "sessionDetailTabText")
-        if session_label is not None:
-            session_label.setText(
-                f"{self._t('session', value=uds_details.get('session') or '—')}\n"
+        session_detail_label = self.findChild(QLabel, "sessionDetailTabText")
+        if session_detail_label is not None:
+            session_detail_label.setText(
+                f"{self._t('session', value=session_label(uds_details.get('session'), self._language))}\n"
                 f"{self._t('addressing', value=addressing)}\n"
                 f"{self._t('direction', value=direction)}"
             )

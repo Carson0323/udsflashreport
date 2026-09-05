@@ -452,6 +452,9 @@ def _message_details(message) -> dict[str, object]:
         ) or "—"
     if message.sid in {0x22, 0x2E, 0x62, 0x6E} and len(raw) >= 3:
         details["did_bytes"] = " ".join(f"{value:02X}" for value in raw[1:3])
+        details["did_ascii"] = "".join(
+            chr(value) if 0x20 <= value <= 0x7E else "." for value in raw[1:3]
+        ) or "—"
     if message.sid in {0x2E, 0x6E} and len(raw) > 3:
         details["write_data"] = " ".join(f"{value:02X}" for value in raw[3:])
         details["write_ascii"] = "".join(
@@ -462,6 +465,13 @@ def _message_details(message) -> dict[str, object]:
         details["read_ascii"] = "".join(
             chr(value) if 0x20 <= value <= 0x7E else "." for value in raw[3:]
         ) or "—"
+    if message.subfunction is not None and len(raw) > 2:
+        details["service_data"] = " ".join(f"{value:02X}" for value in raw[2:])
+    elif (
+        message.sid not in {0x36, 0x22, 0x2E, 0x62, 0x6E}
+        and len(raw) > 1
+    ):
+        details["service_data"] = " ".join(f"{value:02X}" for value in raw[1:])
     return details
 
 

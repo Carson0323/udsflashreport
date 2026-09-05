@@ -66,24 +66,27 @@ def _message_detail(message: UdsMessage) -> dict[str, Any]:
         detail["transfer_data_length"] = max(0, len(raw) - 2)
     if message.sid in {0x22, 0x2E, 0x62, 0x6E} and len(raw) >= 3:
         detail["did_bytes"] = _spaced_hex(raw[1:3])
+        detail["did_ascii"] = _ascii_preview(raw[1:3])
     if message.sid in {0x2E, 0x6E} and len(raw) > 3:
         detail["write_data"] = _spaced_hex(raw[3:])
         detail["write_ascii"] = _ascii_preview(raw[3:])
     if message.sid in {0x22, 0x62} and len(raw) > 3:
         detail["read_data"] = _spaced_hex(raw[3:])
         detail["read_ascii"] = _ascii_preview(raw[3:])
-    if message.sid not in {0x36, 0x22, 0x2E, 0x62, 0x6E} and len(raw) > 1:
+    if (
+        message.sid not in {0x36, 0x22, 0x2E, 0x62, 0x6E}
+        and message.subfunction is None
+        and len(raw) > 1
+    ):
         detail["service_data"] = _spaced_hex(raw[1:])
+    elif message.subfunction is not None and len(raw) > 2:
+        detail["service_data"] = _spaced_hex(raw[2:])
     return detail
 
 
 def _step_detail(request: UdsMessage, response: UdsMessage | None) -> str:
     detail = _message_detail(request)
-    parts = [
-        f"0x{request.sid:02X} {request.service_name or 'unknown'}"
-        if request.sid is not None
-        else "unknown service"
-    ]
+    parts: list[str] = []
     if request.subfunction is not None:
         parts.append(f"SubFunction={_hex(request.subfunction, 2)}")
     if request.did is not None:
@@ -103,7 +106,7 @@ def _step_detail(request: UdsMessage, response: UdsMessage | None) -> str:
         parts.append(f"RoutineID={_hex(detail['routine_id'], 4)}")
         parts.append(f"params={detail['routine_parameters'] or '—'}")
         parts.append(f"ASCII={detail.get('routine_ascii') or '—'}")
-    if request.sid not in {0x22, 0x2E, 0x31, 0x34, 0x36} and detail.get("service_data"):
+    if detail.get("service_data"):
         parts.append(f"data={detail['service_data']}")
     if response is None:
         parts.append("response=missing")

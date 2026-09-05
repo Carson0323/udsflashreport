@@ -101,8 +101,23 @@ def build_stylesheet(tokens: ThemeTokens = LIGHT_TOKENS) -> str:
         background: {tokens.panel};
         color: {tokens.text_primary};
     }}
-    QCheckBox {{ spacing: 4px; color: {tokens.text_primary}; }}
-    QCheckBox::indicator {{ width: 14px; height: 14px; }}
+    QCheckBox {{ spacing: 5px; color: {tokens.text_primary}; background: transparent; }}
+    QCheckBox::indicator {{
+        width: 16px;
+        height: 16px;
+        border: 1px solid {tokens.text_secondary};
+        border-radius: 2px;
+        background: {tokens.panel};
+    }}
+    QCheckBox::indicator:hover {{ border: 2px solid {tokens.text_primary}; }}
+    QCheckBox::indicator:checked {{
+        border: 2px solid {tokens.text_primary};
+        background: {tokens.selection};
+    }}
+    QLabel#languageLabel, QLabel#filterLabel, QLabel#dataLegend {{
+        background: transparent;
+        color: {tokens.text_secondary};
+    }}
     QToolTip {{ background: {tokens.panel}; color: {tokens.text_primary}; border: 1px solid {tokens.border}; }}
     QToolBar QPushButton:hover, QPushButton:hover {{ background: {tokens.selection}; }}
     QPushButton:disabled {{ color: {tokens.text_secondary}; background: {tokens.background}; }}
@@ -154,7 +169,6 @@ def build_stylesheet(tokens: ThemeTokens = LIGHT_TOKENS) -> str:
     QFrame[severity="medium"] {{ border-left: 4px solid {tokens.severity_medium}; }}
     QFrame[severity="low"] {{ border-left: 4px solid {tokens.severity_low}; }}
     QLabel#secondaryText {{ color: {tokens.text_secondary}; }}
-    QLabel#filterLabel, QLabel#dataLegend {{ color: {tokens.text_secondary}; }}
     QListView {{ border: 1px solid {tokens.border}; alternate-background-color: {tokens.background}; }}
     QListView::item {{ padding: 6px 8px; min-height: 28px; }}
     QListView::item:selected {{ background: {tokens.selection}; color: {tokens.text_primary}; }}

@@ -164,6 +164,16 @@ def test_pending_then_final_response_is_not_a_finding() -> None:
     assert result.findings == []
 
 
+def test_missing_fc_uses_ff_as_deviation_and_deadline_as_detection_timestamp() -> None:
+    ff = _event(bytes.fromhex("100922F190000000"), 1.0, 1, "tester->ecu")
+    conversation, frames = _conversation([ff], [], 2.0)
+    result = analyze_trace(_bundle(conversation, frames, 2.0), default_config())
+    finding = next(item for item in result.findings if item.finding_id == "ISO-TP-001")
+    assert finding.deviation_ts == 1.0
+    assert finding.detected_ts == 2.0
+    assert finding.evidence[0].frame_ref == "synthetic:1"
+
+
 def test_final_ecu_negative_response_is_a_locatable_finding() -> None:
     pdus = [
         _direct_pdu(bytes.fromhex("3400440000"), 1.0, 1, "tester->ecu"),

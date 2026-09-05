@@ -71,3 +71,15 @@ def test_did_and_unknown_message_are_safe() -> None:
     assert did.did == 0xF190
     assert unknown.service_name is None and unknown.is_positive is None
     assert empty.sid is None and empty.raw == b""
+
+
+def test_clear_diagnostic_information_and_control_dtc_setting_are_standard_services() -> None:
+    clear = decode_uds(bytes.fromhex("14FFFFFF"))
+    control = decode_uds(bytes.fromhex("8502"))
+    positive_control = decode_uds(bytes.fromhex("C502"))
+    assert clear.service_name == "ClearDiagnosticInformation"
+    assert clear.subfunction is None
+    assert control.service_name == "ControlDTCSetting"
+    assert control.subfunction == 0x02
+    assert positive_control.service_name == "ControlDTCSetting"
+    assert positive_control.subfunction == 0x02

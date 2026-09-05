@@ -25,7 +25,7 @@ def test_read_generated_asc_and_preserve_frame_metadata() -> None:
 def test_asc_fallback_supports_candump_and_explicit_fd_marker(tmp_path) -> None:
     path = tmp_path / "variant.asc"
     path.write_text(
-        "(0.100000) can0 18DA10F1##1014020000000000\n"
+        "(0.100000) can0 18DA10F1##11014020000000000\n"
         "(0.200000) 18DAF110#025002\n",
         encoding="ascii",
     )

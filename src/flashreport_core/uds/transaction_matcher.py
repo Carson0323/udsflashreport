@@ -8,6 +8,7 @@ from typing import Iterable, Sequence
 from ..models import IsoTpConversation, IsoTpPdu, UdsMessage, UdsTransaction
 from .decoder import decode_uds
 from .pending import PendingIssue, TimedUdsMessage, check_pending
+from .tables import SUBFUNCTION_SERVICES
 
 
 @dataclass(frozen=True)
@@ -64,6 +65,27 @@ def _is_tester_present(message: UdsMessage) -> bool:
 
 def _response_targets_tester_present(message: UdsMessage) -> bool:
     return message.sid == 0x7E or (message.sid == 0x7F and message.raw[1:2] == b"\x3E")
+
+
+def _response_matches(request: UdsMessage, response: UdsMessage) -> bool:
+    if request.sid is None or response.sid is None:
+        return False
+    if response.sid == 0x7F:
+        return len(response.raw) >= 3 and response.raw[1] == request.sid
+    if response.sid != request.sid + 0x40:
+        return False
+    if request.sid in SUBFUNCTION_SERVICES:
+        if request.subfunction is None or response.subfunction != request.subfunction:
+            return False
+    if request.sid in {0x22, 0x2E}:
+        if request.did is None or response.did != request.did:
+            return False
+    if request.sid == 0x36:
+        if request.block_seq is None or response.block_seq != request.block_seq:
+            return False
+    if request.sid == 0x31:
+        return len(request.raw) >= 4 and len(response.raw) >= 4 and request.raw[2:4] == response.raw[2:4]
+    return True
 
 
 def match_transactions(
@@ -126,36 +148,17 @@ def match_transactions(
         if _response_targets_tester_present(message):
             auxiliary.append(item)
             continue
-        if message.pending:
-            if not active:
-                ambiguous = True
-                issues.append(
-                    TransactionIssue(
-                        kind="AMBIGUOUS_UDS_TRANSACTION",
-                        ts=item.ts,
-                        observed="pending response has no outstanding request",
-                        expected="one unique non-TesterPresent request",
-                    )
-                )
-                continue
-            if len(active) > 1:
-                ambiguous = True
-                for state in active:
-                    state.ambiguous = True
-                    state.transaction.ambiguous = True
-            state = max(active, key=lambda candidate: candidate.timed.ts)
-            state.transaction.pending_events.append(message)
-            state.pending_timed.append(item)
-            continue
-
-        if not active:
+        candidates = [state for state in active if _response_matches(state.transaction.request, message)]
+        if not candidates:
             ambiguous = True
+            for state in active:
+                state.transaction.ambiguous = True
             issues.append(
                 TransactionIssue(
                     kind="AMBIGUOUS_UDS_TRANSACTION",
                     ts=item.ts,
-                    observed="response has no outstanding request",
-                    expected="one unique non-TesterPresent request",
+                    observed="response has no matching outstanding request",
+                    expected="request service and echoed identifiers must match the response",
                 )
             )
             continue
@@ -164,7 +167,11 @@ def match_transactions(
             for state in active:
                 state.ambiguous = True
                 state.transaction.ambiguous = True
-        state = max(active, key=lambda candidate: candidate.timed.ts)
+        state = max(candidates, key=lambda candidate: candidate.timed.ts)
+        if message.pending:
+            state.transaction.pending_events.append(message)
+            state.pending_timed.append(item)
+            continue
         state.transaction.final_response = message
         state.transaction.pdu_resp = item.pdu if isinstance(item.pdu, IsoTpPdu) else None
         active.remove(state)

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -68,6 +69,8 @@ def validate_config_data(data: dict[str, Any]) -> ConfigValidationResult:
                 errors.append(_type_error(f"addressing.{key}", "boolean"))
         if "tester_sa" in addressing and not isinstance(addressing["tester_sa"], str):
             errors.append(_type_error("addressing.tester_sa", "string"))
+        elif isinstance(addressing.get("tester_sa"), str) and not re.fullmatch(r"[0-9A-Fa-f]{2}", addressing["tester_sa"]):
+            errors.append("addressing.tester_sa: expected two hexadecimal digits")
         manual_pairs = addressing.get("manual_pairs")
         if not isinstance(manual_pairs, list):
             errors.append(_type_error("addressing.manual_pairs", "array"))
@@ -91,8 +94,14 @@ def validate_config_data(data: dict[str, Any]) -> ConfigValidationResult:
                         errors.append(_type_error(f"{path}.{key}", "string"))
                 if "is_extended_id" in pair and not isinstance(pair["is_extended_id"], bool):
                     errors.append(_type_error(f"{path}.is_extended_id", "boolean"))
+                for key in ("request_id", "response_id"):
+                    value = pair.get(key)
+                    if isinstance(value, str):
+                        limit = 0x1FFFFFFF if pair.get("is_extended_id") is True else 0x7FF
+                        if not re.fullmatch(r"[0-9A-Fa-f]{3,8}", value) or int(value, 16) > limit:
+                            errors.append(f"{path}.{key}: invalid hexadecimal CAN ID for the selected frame format")
                 channel = pair.get("channel")
-                if channel is not None and not isinstance(channel, (int, str)):
+                if isinstance(channel, bool) or (channel is not None and not isinstance(channel, (int, str))):
                     errors.append(_type_error(f"{path}.channel", "integer, string, or null"))
 
     isotp = data.get("isotp")
@@ -103,7 +112,7 @@ def validate_config_data(data: dict[str, Any]) -> ConfigValidationResult:
         errors.extend(
             f"isotp: missing required field {key}" for key in sorted(_ISOTP_KEYS - isotp.keys())
         )
-        if isotp.get("addressing_mode") not in {"auto", "normal", "extended", "mixed"}:
+        if isotp.get("addressing_mode") not in ("auto", "normal", "extended", "mixed"):
             errors.append("isotp.addressing_mode: invalid value")
 
     timeouts = data.get("timeouts")

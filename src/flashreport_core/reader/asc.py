@@ -16,7 +16,7 @@ from .base import ReaderError, ReaderResult, normalize_channel, result_from_mess
 _CANDUMP_RE = re.compile(
     r"^\s*\((?P<ts>[0-9]+(?:\.[0-9]+)?)\)\s+"
     r"(?:(?P<channel>[^\s]+)\s+)?"
-    r"(?P<can_id>[0-9A-Fa-f]+)(?P<separator>##|#)(?P<data>[0-9A-Fa-f]*)\s*$"
+    r"(?P<can_id>[0-9A-Fa-f]+)(?P<separator>##|#)(?P<data>[0-9A-Fa-f]*|R[0-8]?)\s*$"
 )
 
 
@@ -30,11 +30,15 @@ def _parse_hex_id(token: str) -> tuple[int, bool]:
 
 
 def _parse_data_tokens(tokens: list[str], start: int, dlc: int) -> bytes:
+    if not 0 <= dlc <= 64:
+        raise ValueError("invalid data length")
+    if dlc == 0:
+        return b""
     values: list[int] = []
     for token in tokens[start:]:
         clean = token.strip().rstrip(",")
         if not re.fullmatch(r"[0-9A-Fa-f]{2}", clean):
-            continue
+            raise ValueError(f"invalid data byte: {clean}")
         values.append(int(clean, 16))
         if len(values) == dlc:
             break
@@ -79,20 +83,33 @@ def _parse_candump_line(line: str, line_no: int) -> RawFrame | None:
         return None
     can_id, is_extended = _parse_hex_id(match.group("can_id"))
     data_text = match.group("data")
+    is_fd = match.group("separator") == "##"
+    is_remote = data_text.startswith("R")
+    if is_fd:
+        if not data_text or is_remote:
+            raise ValueError("CAN FD record must start with a flags nibble")
+        flags = int(data_text[0], 16)
+        data_text = data_text[1:]
+    remote_dlc = int(data_text[1:] or "0") if is_remote else 0
+    if is_remote:
+        data_text = ""
     if len(data_text) % 2:
         raise ValueError("candump data has an odd number of hex digits")
     data = bytes.fromhex(data_text)
-    return _raw_frame(
+    frame = _raw_frame(
         timestamp=float(match.group("ts")),
         channel=normalize_channel(match.group("channel")),
         can_id=can_id,
         is_extended=is_extended,
-        is_fd=match.group("separator") == "##",
-        dlc=len(data),
+        is_fd=is_fd,
+        dlc=remote_dlc if is_remote else len(data),
         data=data,
         line_no=line_no,
-        is_remote_frame=not bool(data_text),
+        is_remote_frame=is_remote,
     )
+    if is_fd:
+        frame.source_ts_metadata["fd_flags"] = flags
+    return frame
 
 
 def _parse_vector_line(line: str, line_no: int) -> RawFrame | None:
@@ -198,6 +215,13 @@ def read_asc(path: str | Path, *, prefer_native: bool = True) -> ReaderResult:
                 fallback_result = parse_asc_lines(handle)
             if fallback_result.input_stats["frame_count"] > native_result.input_stats["frame_count"]:
                 return fallback_result
+            if fallback_result.input_stats["skipped_object_count"]:
+                native_result.input_stats["skipped_object_count"] = max(
+                    native_result.input_stats["skipped_object_count"],
+                    fallback_result.input_stats["skipped_object_count"],
+                )
+                if "unknown_objects_skipped" not in native_result.input_stats["warnings"]:
+                    native_result.input_stats["warnings"].append("unknown_objects_skipped")
             return native_result
         except Exception:
             pass

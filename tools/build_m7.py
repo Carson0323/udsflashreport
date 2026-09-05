@@ -95,18 +95,21 @@ def _smoke(executable: Path, seconds: float = 5.0) -> dict[str, Any]:
     }
 
 
-def build(output_path: Path) -> dict[str, Any]:
-    dist_path = ROOT / "dist" / "m7_pyinstaller"
-    work_path = ROOT / "build" / "m7_pyinstaller"
-    spec_path = ROOT / "build" / "m7_pyinstaller"
+def build(output_path: Path, *, build_name: str = "m7_pyinstaller") -> dict[str, Any]:
+    if not build_name or Path(build_name).name != build_name or build_name in {".", ".."}:
+        raise ValueError("build name must be a single directory name")
+    dist_path = ROOT / "dist" / build_name
+    work_path = ROOT / "build" / build_name
+    spec_path = work_path
+    for target, parent in ((dist_path, ROOT / "dist"), (work_path, ROOT / "build")):
+        if not target.resolve().is_relative_to(parent.resolve()) or target.resolve() == parent.resolve():
+            raise ValueError(f"build target escapes its output directory: {target}")
     if dist_path.exists():
         try:
             shutil.rmtree(dist_path)
         except PermissionError:
             # Keep a package that is still open by the reviewer runnable.
-            dist_path = ROOT / "dist" / "m7_pyinstaller_next"
-            if dist_path.exists():
-                shutil.rmtree(dist_path)
+            dist_path = ROOT / "dist" / f"{build_name}_{time.time_ns()}"
     if work_path.exists():
         shutil.rmtree(work_path)
     assets = ROOT / "src" / "flashreport_gui" / "assets"
@@ -174,8 +177,9 @@ def build(output_path: Path) -> dict[str, Any]:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Build M7 candidate / 构建 M7 发布候选包")
     parser.add_argument("--output", type=Path, default=Path("artifacts/M7-build-benchmark.json"))
+    parser.add_argument("--build-name", default="m7_pyinstaller", help="Separate output directory for a release build")
     args = parser.parse_args(argv)
-    result = build(args.output)
+    result = build(args.output, build_name=args.build_name)
     print(json.dumps({"route_a": result["route_a"]["build"], "startup": result["route_a"]["startup"]["status"]}, ensure_ascii=False))
     return 0 if result["route_a"]["build"] == "SUCCESS" and result["route_a"]["startup"]["status"] == "SUCCESS" else 2
 

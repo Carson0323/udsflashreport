@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import math
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -87,13 +88,20 @@ def result_from_messages(messages: Iterable[Any], source: str) -> ReaderResult:
     skipped_objects = 0
     for sequence, message in enumerate(messages, start=1):
         try:
-            if isinstance(message, RawFrame):
-                frames.append(message)
-            else:
-                frames.append(frame_from_message(message, source, sequence))
+            frame = message if isinstance(message, RawFrame) else frame_from_message(message, source, sequence)
+            if not math.isfinite(frame.ts_seconds):
+                raise ValueError("timestamp must be finite")
+            if not frame.is_error_frame and not 0 <= frame.can_id <= (0x1FFFFFFF if frame.is_extended else 0x7FF):
+                raise ValueError("CAN ID out of range")
+            if not 0 <= frame.dlc <= (64 if frame.is_fd else 8):
+                raise ValueError("DLC out of range")
+            if not frame.is_remote_frame and not frame.is_error_frame and len(frame.data) != frame.dlc:
+                raise ValueError("data length does not match DLC")
+            frames.append(frame)
         except (TypeError, ValueError, AttributeError):
             skipped_objects += 1
 
+    time_monotonic = all(left.ts_seconds <= right.ts_seconds for left, right in zip(frames, frames[1:]))
     frames.sort(key=lambda frame: frame.ts_seconds)
     unknown_channel_count = sum(frame.channel is None for frame in frames)
     warnings: list[str] = []
@@ -101,6 +109,8 @@ def result_from_messages(messages: Iterable[Any], source: str) -> ReaderResult:
         warnings.append("unknown_channel")
     if skipped_objects:
         warnings.append("unknown_objects_skipped")
+    if not time_monotonic:
+        warnings.append("timestamps_reordered")
     input_stats = {
         "source": source,
         "reader": source,
@@ -111,10 +121,7 @@ def result_from_messages(messages: Iterable[Any], source: str) -> ReaderResult:
         "remote_frame_count": sum(frame.is_remote_frame for frame in frames),
         "error_frame_count": sum(frame.is_error_frame for frame in frames),
         "warnings": warnings,
-        "time_monotonic": all(
-            left.ts_seconds <= right.ts_seconds
-            for left, right in zip(frames, frames[1:])
-        ),
+        "time_monotonic": time_monotonic,
     }
     return ReaderResult(frames=frames, input_stats=input_stats)
 

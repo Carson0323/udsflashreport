@@ -89,6 +89,21 @@ def decode_uds(value: bytes | bytearray | IsoTpPdu) -> UdsMessage:
     )
 
 
+def parse_download_fields(raw: bytes) -> tuple[int | None, int | None]:
+    """Decode 0x34 ALFID: high nibble is size width, low nibble address width."""
+    if len(raw) < 3 or raw[0] != 0x34:
+        return None, None
+    address_size = raw[2] & 0x0F
+    length_size = raw[2] >> 4
+    length_start = 3 + address_size
+    if not address_size or not length_size or len(raw) < length_start + length_size:
+        return None, None
+    return (
+        int.from_bytes(raw[3:length_start], "big"),
+        int.from_bytes(raw[length_start:length_start + length_size], "big"),
+    )
+
+
 def parse_max_block_length(raw: bytes | bytearray | IsoTpPdu | UdsMessage) -> int | None:
     """Parse 0x74 using the response length-format identifier.
 

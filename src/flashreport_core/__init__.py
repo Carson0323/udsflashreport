@@ -1,6 +1,6 @@
 """Core package metadata for the udsflashreport project."""
 
-__version__ = "1.0.0"
+__version__ = "1.0.1"
 __author__ = "chaofan"
 __email__ = "archaofan@gmail.com"
 

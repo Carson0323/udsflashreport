@@ -439,14 +439,11 @@ def _message_details(message) -> dict[str, object]:
     }
     raw = bytes(message.raw)
     if message.sid == 0x34 and len(raw) >= 3:
-        address_size = (raw[2] >> 4) & 0x0F
-        length_size = raw[2] & 0x0F
-        length_start = 3 + address_size
-        if address_size and length_size and len(raw) >= length_start + length_size:
-            details["start_address"] = int.from_bytes(raw[3:length_start], "big")
-            details["transfer_length"] = int.from_bytes(
-                raw[length_start : length_start + length_size], "big"
-            )
+        from ..uds.decoder import parse_download_fields
+
+        address, length = parse_download_fields(raw)
+        details["start_address"] = address
+        details["transfer_length"] = length
     if message.sid == 0x31 and len(raw) >= 4:
         details["routine_id"] = int.from_bytes(raw[2:4], "big")
         details["routine_parameters"] = " ".join(f"{value:02X}" for value in raw[4:]) or "—"

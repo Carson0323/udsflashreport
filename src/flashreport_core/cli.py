@@ -53,6 +53,12 @@ def _print_result(result) -> None:
         print(f"CONFIDENCE     : {first.confidence.upper()}")
         print(f"FINDINGS       : {len(result.findings)}")
     stats = result.report_data.get("input_stats", {})
+    for warning in stats.get("warnings", []):
+        print(f"INPUT WARNING  : {warning}")
+    if stats.get("skipped_object_count"):
+        print(f"INPUT QUALITY  : known incomplete; {stats['skipped_object_count']} records skipped")
+    if not result.bundle.conversations:
+        print("ANALYSIS SCOPE : no physical diagnostic conversation; check addressing and protocol support")
     if stats.get("ambiguous"):
         print("AMBIGUOUS      : review transaction pairing before relying on attribution")
 

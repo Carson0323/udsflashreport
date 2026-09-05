@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from .models import AppConfig, IsoTpConversation, RawFrame, TraceBundle, UdsMessage, UdsTransaction
-from .uds.decoder import decode_uds
+from .uds.decoder import decode_uds, parse_download_fields
 from .uds.transaction_matcher import match_conversation
 
 
@@ -24,18 +24,7 @@ def _hex(value: int | None, width: int = 0) -> str:
 
 
 def _download_fields(raw: bytes) -> tuple[int | None, int | None]:
-    if len(raw) < 3 or raw[0] != 0x34:
-        return None, None
-    address_size = (raw[2] >> 4) & 0x0F
-    length_size = raw[2] & 0x0F
-    address_start = 3
-    length_start = address_start + address_size
-    if not address_size or not length_size or len(raw) < length_start + length_size:
-        return None, None
-    return (
-        int.from_bytes(raw[address_start:length_start], "big"),
-        int.from_bytes(raw[length_start:length_start + length_size], "big"),
-    )
+    return parse_download_fields(raw)
 
 
 def _routine_fields(raw: bytes) -> tuple[int | None, bytes]:

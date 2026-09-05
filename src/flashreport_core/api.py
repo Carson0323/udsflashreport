@@ -22,7 +22,7 @@ from .models import (
 )
 from .addressing import address_frames, group_by_pair_key
 from .isotp.events import build_conversations, eventize_frames
-from .reader import read_trace
+from .reader import ReaderError, read_trace
 
 
 def validate_config(data: dict) -> ConfigValidationResult:
@@ -39,6 +39,9 @@ def load_trace(path: str, cfg: AppConfig) -> TraceBundle:
 
     reader_result = read_trace(path)
     frames = reader_result.frames
+    if not frames:
+        raise ReaderError("trace contains no readable CAN frames")
+    skipped = reader_result.input_stats.get("skipped_object_count", 0)
     if frames:
         start_ts = frames[0].ts_seconds
         end_ts = frames[-1].ts_seconds
@@ -54,9 +57,9 @@ def load_trace(path: str, cfg: AppConfig) -> TraceBundle:
             key=lambda channel: (str(type(channel)), str(channel)),
         ),
         filter_state_known=False,
-        completeness="unknown",
+        completeness="known_incomplete" if skipped else "unknown",
     )
-    window = TraceWindow(start_ts=start_ts, end_ts=end_ts, coverage_ok=True)
+    window = TraceWindow(start_ts=start_ts, end_ts=end_ts, coverage_ok=not skipped)
     addressed = address_frames(frames, cfg.addressing)
     event_result = eventize_frames(addressed, addressing_mode=cfg.isotp.addressing_mode)
     conversations = build_conversations(
@@ -170,10 +173,22 @@ def analyze_trace(bundle: TraceBundle, cfg: AppConfig) -> AnalysisResult:
 
 
 def export_report(result: AnalysisResult, md_path: str | None, json_path: str | None) -> dict:
+    from pathlib import Path
+
     from .report.json_out import write_json
     from .report.markdown import render_markdown
     from .report.validate import validate_report
 
+    paths = [Path(path).resolve() for path in (md_path, json_path) if path is not None]
+    source = Path(result.bundle.path).resolve()
+
+    def same_file(left: Path, right: Path) -> bool:
+        return left == right or (left.exists() and right.exists() and left.samefile(right))
+
+    if any(same_file(path, source) for path in paths):
+        raise ValueError("report output must not overwrite the source trace")
+    if len(paths) == 2 and same_file(paths[0], paths[1]):
+        raise ValueError("Markdown and JSON output paths must be different")
     report = dict(result.report_data)
     validation = validate_report(report)
     if not validation.ok:

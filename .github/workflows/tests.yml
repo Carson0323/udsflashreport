@@ -1,0 +1,25 @@
+name: Tests and distribution
+
+on: [push, pull_request]
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install --upgrade pip setuptools wheel
+      - run: python -m pip install -e ".[dev]"
+      - run: python -m pytest -q
+        env:
+          QT_QPA_PLATFORM: offscreen
+      - run: python -m pip wheel . --no-deps --wheel-dir dist/wheels
+      - shell: pwsh
+        run: |
+          $wheel = Get-ChildItem dist/wheels/udsflashreport-*.whl | Select-Object -First 1
+          python tools/check_distribution.py $wheel.FullName

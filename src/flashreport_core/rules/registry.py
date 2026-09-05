@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from ..spec_utils import load_findings_yaml
+from ..models import RULE_CONFIG_KEYS
 from .flash_rules import oversize_or_bsc_error
 from .transport_rules import (
     cf_after_cts_missing,
@@ -64,6 +65,9 @@ def load_rule_specs(path: str | Path | None = None) -> dict[str, RuleSpec]:
             confidence_policy=raw.get("confidence_policy"),
             supersede=bool(raw.get("supersede", False)),
         )
+    expected = set(RULE_CONFIG_KEYS.values())
+    if set(specs) != expected:
+        raise ValueError(f"finding ids mismatch: expected {sorted(expected)}, got {sorted(specs)}")
     return specs
 
 

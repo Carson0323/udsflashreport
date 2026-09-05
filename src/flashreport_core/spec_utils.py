@@ -19,7 +19,7 @@ def _runtime_roots() -> tuple[Path, ...]:
             roots.extend((meipass_root, meipass_root / "_internal"))
         executable_root = Path(sys.executable).resolve().parent
         roots.extend((executable_root / "_internal", executable_root))
-    roots.append(source_root)
+    roots.extend((Path(__file__).resolve().parent / "resources", source_root))
 
     unique: list[Path] = []
     for root in roots:
@@ -133,7 +133,10 @@ def load_findings_yaml(path: str | Path | None = None) -> dict[str, Any]:
     except ImportError:
         data = _fallback_yaml_load(registry_path)
     else:
-        data = yaml.safe_load(registry_path.read_text(encoding="utf-8"))
+        try:
+            data = yaml.safe_load(registry_path.read_text(encoding="utf-8"))
+        except yaml.YAMLError as exc:
+            raise ValueError(f"invalid findings YAML: {exc}") from exc
 
     if not isinstance(data, dict):
         raise ValueError("findings registry root must be an object")
@@ -157,6 +160,9 @@ def load_findings_yaml(path: str | Path | None = None) -> dict[str, Any]:
             raise ValueError(f"findings[{index}].evaluator must be a string")
         if not isinstance(entry["evidence"], dict):
             raise ValueError(f"findings[{index}].evidence must be an object")
+        for key in ("params", "side_mapping"):
+            if not isinstance(entry[key], dict):
+                raise ValueError(f"findings[{index}].{key} must be an object")
     return data
 
 

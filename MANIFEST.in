@@ -1,0 +1,8 @@
+recursive-include spec *.yaml *.json *.md
+recursive-include tests *.py
+recursive-include samples *.asc *.json
+recursive-include tools *.py
+recursive-include packaging *.txt
+recursive-include docs *.md
+include CHANGELOG.md
+include THIRD_PARTY_NOTICES.md

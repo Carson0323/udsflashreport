@@ -28,44 +28,42 @@ Launch the GUI with `flashreport-gui` (or `python -m flashreport_gui.app`).
 
 ## 项目状态 | Project Status
 
-当前已发布 V1.0.0：M7 Windows 打包、启动自检和私有语料回归均已完成；发布包为 PyInstaller onedir，可在未安装 Python 的 Windows 环境中直接运行。
-V1.0.0 is released: M7 Windows packaging, startup smoke testing, and private-corpus regression are complete. The release package is a PyInstaller onedir build that runs directly on Windows without a Python installation.
+当前版本 **V1.0.1**，包含开发/测试使用者专家评审后的正确性与交付修复。详见 [更新记录](CHANGELOG.md) 和 [评审报告](docs/review-v1.0.1.md)。
+Current version: **V1.0.1**, with correctness and distribution fixes from an engineering review. See the changelog and review report for validation boundaries.
 
-M2 已支持 SF/FF/CF/FC 事件化、SN 校验、CF/STmin/BS/WAIT/OVFLW/超时诊断，以及按双向 conversation 进行 Transport Validator 校验。UDS 解码、会话、归因和报告将在后续里程碑完成。
-M2 supports SF/FF/CF/FC eventization, sequence-number checks, CF/STmin/BS/WAIT/OVFLW/timeout diagnostics, and bidirectional conversation validation. UDS decoding, sessions, attribution, and reports are scheduled for later milestones.
+已提供 Qt 异步 Open/Analyze/Export、证据逐条跳转、时间/方向/CF 筛选、深浅主题、中英文 UI、按步骤展示的刷写流程表和协议字节/ASCII 详情。
+The GUI includes asynchronous loading, analysis and export, evidence navigation, time/direction/CF filters, themes, Chinese/English UI, flash workflow steps, and protocol byte/ASCII details.
 
-M3 已支持 UDS 子集解码、NRC/0x78 Pending、事务歧义标记、诊断会话与刷写上下文。
-M3 supports the UDS subset decoder, NRC/0x78 pending handling, transaction ambiguity markers, diagnostic sessions, and flash context.
+修改配置后会重新加载当前日志并使旧结果失效，请重新点击 Analyze。未触发 Finding 仅表示没有满足现有规则，不能单独证明刷写成功。损坏记录会标记输入已知不完整。
+Saving configuration reloads the current trace and invalidates previous results; run Analyze again. No findings alone does not prove flashing succeeded. Skipped damaged records mark input as known incomplete.
 
-M4 已支持 findings.yaml 驱动的 7 类确定性归因、时序来源、证据契约、first deviation、事务歧义降级和 tester 先行错误对后续 ECU 超时的 supersede 标记。
-M4 supports seven findings driven by findings.yaml, timing provenance, evidence contracts, first-deviation selection, ambiguity confidence caps, and supersede marking when a prior tester error explains a later ECU timeout.
+## 安装与使用 | Installation and Usage
 
-M5 已支持直接分析 ASC/BLF、双语 Markdown/JSON 报告、报告 Schema 校验和 CLI 退出码。29 位标准诊断地址可在未配置 tester SA 时自动成对，结果保留歧义标记供测试人员确认。
-M5 supports direct ASC/BLF analysis, bilingual Markdown/JSON reports, report-schema validation, and CLI exit codes. Standard 29-bit diagnostic IDs can be paired automatically without a configured tester SA, with ambiguity retained for tester review.
+Windows 分发包解压后运行 `FlashReport/FlashReport.exe`，保留完整目录及 `_internal`，无需安装 Python。
+Extract the Windows distribution and run `FlashReport/FlashReport.exe`; keep its entire directory, including `_internal`.
 
-M6-A 提供了 Qt Widgets 主窗口、会话树、原始帧表、Finding 证据卡片和底部详情页，作为 M6-B 交互的基础。
-M6-A provides the Qt Widgets main window, conversation tree, raw-frame table, Finding evidence cards, and detail tabs as the foundation for M6-B interaction.
+源码开发需要 Python 3.11：
 
-M6-B 已将 Open/Analyze/Export 接入 QThreadPool，并提供错误状态、逐条 evidence 跳转、缺失区间展示和配置持久化。GUI 主线程只负责控件和 Model 更新。
-M6-B connects Open/Analyze/Export to QThreadPool and provides error states, per-evidence navigation, absence-window display, and configuration persistence. The GUI thread only updates widgets and models.
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -e ".[dev]"
+.\.venv\Scripts\flashreport-gui.exe
+.\.venv\Scripts\python.exe -m flashreport_core.cli analyze samples/success_full_download.asc --out report.md --out-json report.json
+.\.venv\Scripts\python.exe -m pytest -q
+```
 
-M6-C 已加入统一浅色 ThemeTokens、SVG 工具栏图标、尺寸/间距约束和多状态截图验收；截图仅用于本机结构审查，不包含私有测试语料。
-M6-C adds centralized light ThemeTokens, SVG toolbar icons, size/spacing constraints, and multi-state screenshot acceptance. Screenshots are for local structural review only and contain no private test corpus.
+CLI 退出码：`0` 分析/导出完成（可能有 Finding），`2` 输入读取或分析失败，`3` 配置/规则无效，`4` 报告校验或导出失败。CI 若需要按故障判失败，应读取 JSON 的 `findings` 和 `input_stats`，而非仅检查退出码。
+CLI exit codes: `0` completed (findings may exist), `2` input/analysis error, `3` invalid config/spec, `4` validation/export error. Use the JSON findings and input quality for a diagnostic pass/fail policy.
 
-M7 已加入 requirements.lock、部署预检、带 Qt DLL 运行时路径保护和公开样例分析自检的 PyInstaller onedir 构建 benchmark，以及仅本机运行的私有语料错误注入/回归工具；在人工审核完成前不会创建 GitHub Release。
-M7 adds requirements.lock, deployment preflight, a PyInstaller onedir build benchmark with Qt DLL runtime-path protection and public-sample analysis smoke testing, and local-only private-corpus fault-injection/regression tools. No GitHub Release will be created before human review is complete.
+构建并验证 wheel：
 
-本轮 GUI 增强已支持更紧凑的 CH/DLC 列、按时间排序、方向与 CF 筛选、Data 字节语义色块、Finding 到证据行的直接定位、深浅色主题切换，以及大规模 Finding 的虚拟列表；私有报文仍只在本机处理。
-This GUI refinement adds compact CH/DLC columns, chronological sorting, direction and CF filters, semantic Data-byte color blocks, direct Finding-to-evidence navigation, light/dark themes, and a virtual list for large Finding sets. Private traces remain local-only.
+```powershell
+python -m pip wheel . --no-deps --wheel-dir dist/wheels
+python tools/check_distribution.py dist/wheels/udsflashreport-1.0.1-py3-none-any.whl
+```
 
-M8 已加入独立的中文/English UI 选择（表头与 CF/FF/BSC 等协议缩写保持英文）、干净的未加载空状态、所有详情页联动、可定位的 ECU NRC Finding（UDS-002）和人工复核原因说明；刷写流程页改为按步骤逐行展示的表格，列出会话、DID、RoutineID、下载起始地址/长度、TransferData 分段统计，并识别物理/功能寻址。TransferData 中间数据不会被流程摘要重复展开。
-M8 adds an independent Chinese/English UI selector (table headers and protocol abbreviations such as CF/FF/BSC stay in English), a clean pre-load empty state, synchronized detail tabs, locatable ECU NRC findings (UDS-002), and explicit manual-review reasons. The Flash Flow tab is a row-per-step table showing session, DID, RoutineID, download start/length, TransferData segment statistics, and physical/functional addressing. TransferData payload bodies are not duplicated in the workflow summary.
-
-当前协议字段按字节间隔显示，例如 `2E 12 34 31 32`；DID 除十六进制字节外，还显示关联数据的 ASCII 预览，Routine 参数和其他服务数据也采用相同格式。不可打印字节以 `.` 表示。
-Protocol fields are rendered byte-by-byte with spaces, for example `2E 12 34 31 32`; DID data also includes an ASCII preview, and Routine parameters and other service data use the same format. Non-printable bytes are shown as `.`.
-
-开发按冻结规格 M0→M7 进行，每个里程碑都必须通过对应的自动化测试 Gate。
-Development follows the frozen M0→M7 specification; each milestone must pass its automated test Gate.
+Windows EXE 构建需另行安装 PyInstaller，再运行 `python tools/build_m7.py --build-name v1.0.1`。依赖范围见 `pyproject.toml`；当前未提交依赖锁文件。
+For a Windows EXE build, install PyInstaller and run the build command above. Dependency ranges are in `pyproject.toml`; no dependency lock file is currently committed.
 
 ## 安全与责任 | Safety and Responsibility
 

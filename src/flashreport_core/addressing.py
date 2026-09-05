@@ -155,7 +155,7 @@ def address_frames(
     dynamic_groups: dict[tuple[int | str | None, tuple[int, int]], list[tuple[int, RawFrame, tuple[int, int]]]] = defaultdict(list)
     for index, frame in enumerate(source_frames):
         role, pair_key = _address_one(frame, addressing)
-        if role == "other":
+        if role == "other" and addressing.auto_detect and addressing.enable_29bit_normal_fixed:
             candidate = _normal_fixed_candidate(frame)
             if candidate is not None:
                 dynamic_groups[

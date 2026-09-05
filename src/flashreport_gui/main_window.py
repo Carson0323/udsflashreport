@@ -859,7 +859,7 @@ class MainWindow(QMainWindow):
         self.openButton.setEnabled(state not in {"LOADING", "ANALYZING"})
         self.analyzeButton.setEnabled(has_bundle and state in {"READY", "RESULT"})
         self.exportButton.setEnabled(state == "RESULT" and self._analysis_result is not None)
-        self.settingsButton.setEnabled(state not in {"LOADING", "ANALYZING"})
+        self.settingsButton.setEnabled(state not in {"LOADING", "ANALYZING"} and not self._exporting)
         self.emptyCenterLabel.setVisible(state in {"EMPTY", "LOADING", "ANALYZING"})
         self.errorLabel.setVisible(state == "ERROR")
         self.frameHeading.setVisible(state != "EMPTY")
@@ -921,9 +921,10 @@ class MainWindow(QMainWindow):
     def load_file(self, path: str, config: AppConfig | None = None) -> bool:
         """Load a trace through the AnalysisController worker."""
 
-        if not path:
+        if not path or self._state in {"LOADING", "ANALYZING"} or self._exporting:
             return False
         selected_config = config if config is not None else self._config
+        self._config = selected_config
         self._active_path = str(path)
         self._bundle = None
         self._analysis_result = None
@@ -944,7 +945,7 @@ class MainWindow(QMainWindow):
     def start_analysis(self) -> bool:
         """Analyze the current bundle on a QThreadPool worker."""
 
-        if self._bundle is None or self._state not in {"READY", "RESULT"}:
+        if self._bundle is None or self._state not in {"READY", "RESULT"} or self._exporting:
             return False
         self.analysisController.analyze(self._bundle, self._config)
         return True
@@ -990,7 +991,11 @@ class MainWindow(QMainWindow):
 
     @Slot(object)
     def _on_config_saved(self, config: AppConfig) -> None:
+        if self._state in {"LOADING", "ANALYZING"} or self._exporting:
+            return
         self._config = config
+        if self._bundle is not None:
+            self.load_file(self._bundle.path, config)
         self.statusBar().showMessage("Configuration updated" if self._language == "en" else "配置已更新", 4000)
 
     @Slot()
@@ -1044,6 +1049,7 @@ class MainWindow(QMainWindow):
         self.openButton.setEnabled(False)
         self.analyzeButton.setEnabled(False)
         self.exportButton.setEnabled(False)
+        self.settingsButton.setEnabled(False)
         self.statusBar().showMessage(self._t("exporting"))
         self.exportStarted.emit()
 
